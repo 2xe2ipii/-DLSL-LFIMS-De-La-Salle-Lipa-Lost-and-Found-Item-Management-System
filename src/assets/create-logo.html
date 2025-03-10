@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>DLSL Logo Generator</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .logo-container {
+      margin: 20px 0;
+    }
+    canvas {
+      border: 1px solid #ccc;
+    }
+    .instructions {
+      max-width: 600px;
+      margin: 20px 0;
+      background-color: #f0f0f0;
+      padding: 15px;
+      border-radius: 5px;
+    }
+  </style>
+</head>
+<body>
+  <h1>DLSL Logo Generator</h1>
+  <div class="instructions">
+    <p>This page generates placeholder logos for the DLSL Lost and Found system. Right-click on the images and select "Save image as..." to download them.</p>
+    <p>Then replace the following files in the public directory:</p>
+    <ul>
+      <li>favicon.ico (use the 64x64 image and convert it)</li>
+      <li>logo192.png</li>
+      <li>logo512.png</li>
+    </ul>
+  </div>
+  
+  <div class="logo-container">
+    <h2>64x64 Logo (for favicon)</h2>
+    <canvas id="logo64" width="64" height="64"></canvas>
+  </div>
+  
+  <div class="logo-container">
+    <h2>192x192 Logo</h2>
+    <canvas id="logo192" width="192" height="192"></canvas>
+  </div>
+  
+  <div class="logo-container">
+    <h2>512x512 Logo</h2>
+    <canvas id="logo512" width="512" height="512"></canvas>
+  </div>
+
+  <script>
+    // DLSL colors
+    const primaryColor = '#006400'; // Green
+
+    function drawLogo(canvasId, size) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      
+      // Background
+      ctx.fillStyle = primaryColor;
+      ctx.fillRect(0, 0, size, size);
+      
+      // Draw "LF" text
+      ctx.fillStyle = '#ffffff';
+      ctx.font = `bold ${size * 0.4}px Arial`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('LF', size / 2, size / 2);
+      
+      // Draw border
+      ctx.strokeStyle = secondaryColor;
+      ctx.lineWidth = size * 0.05;
+      ctx.strokeRect(size * 0.1, size * 0.1, size * 0.8, size * 0.8);
+    }
+
+    // Generate logos of different sizes
+    drawLogo('logo64', 64);
+    drawLogo('logo192', 192);
+    drawLogo('logo512', 512);
+  </script>
+</body>
+</html> 

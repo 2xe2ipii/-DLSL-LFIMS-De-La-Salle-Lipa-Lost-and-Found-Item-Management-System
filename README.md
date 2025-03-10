@@ -1,46 +1,112 @@
-# Getting Started with Create React App
+# DLSL Lost and Found Item Management System (LFIMS)
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+A comprehensive system for managing lost and found items within the De La Salle Lipa campus.
 
-## Available Scripts
+## Overview
 
-In the project directory, you can run:
+The DLSL Lost and Found Item Management System (LFIMS) is designed to streamline the process of managing lost and found items within the De La Salle Lipa campus. The system is used by the Student Discipline and Formation Office (SDFO) to track and manage items that have been lost and found on campus.
 
-### `npm start`
+## Features
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- **Dashboard** - Overview of statistics and metrics
+- **Items Management**
+  - Lost Items - Log and track lost items
+  - Found Items - Log and track found items
+  - Claimed Items - Record items that have been claimed by their owners
+  - Donated Items - Track items that have been donated after not being claimed
+- **Search and Filter** - Quickly find items using various criteria
+- **Claim Verification** - Process for verifying claims to found items
+- **Reports Generation** - Create monthly, yearly, and custom reports
+- **User Management** - Different access levels based on roles
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+## Technology Stack
 
-### `npm test`
+- **Frontend**: React, TypeScript, Material-UI
+- **State Management**: Redux with Redux Toolkit
+- **Routing**: React Router
+- **Charts**: Chart.js with React-Chartjs-2
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Getting Started
 
-### `npm run build`
+### Prerequisites
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+- Node.js (v14.0 or higher)
+- npm (v6.0 or higher)
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Installation
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+1. Clone the repository
 
-### `npm run eject`
+   ```
+   git clone https://github.com/your-username/dlsl-lfims.git
+   cd dlsl-lfims
+   ```
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+2. Install dependencies
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+   ```
+   npm install
+   ```
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+3. Start the development server
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+   ```
+   npm start
+   ```
 
-## Learn More
+4. Open http://localhost:3000 to view the application in your browser
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+### Login Credentials (for development)
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+- **Admin**
+
+  - Username: admin
+  - Password: password
+
+- **Super Admin**
+  - Username: superadmin
+  - Password: password
+
+## Project Structure
+
+```
+dlsl-lfims/
+├── public/
+├── src/
+│   ├── assets/           # Images, icons, etc.
+│   │   ├── common/       # Shared components
+│   │   ├── dashboard/    # Dashboard components
+│   │   ├── items/        # Item-related components
+│   │   ├── layout/       # Layout components
+│   │   └── reports/      # Report components
+│   ├── hooks/            # Custom React hooks
+│   ├── pages/            # Page components
+│   │   ├── auth/         # Authentication pages
+│   │   ├── dashboard/    # Dashboard page
+│   │   ├── items/        # Items pages
+│   │   ├── profile/      # User profile page
+│   │   ├── reports/      # Reports pages
+│   │   └── settings/     # Settings page
+│   ├── store/            # Redux store
+│   │   └── slices/       # Redux slices
+│   ├── types/            # TypeScript type definitions
+│   └── utils/            # Utility functions
+├── package.json
+└── tsconfig.json
+```
+
+## Future Development Plans
+
+- **Database Integration**: Connect to a backend database for persistent storage
+- **API Development**: Create a RESTful API for data operations
+- **Mobile Application**: Develop a mobile app for easier access
+- **Advanced Analytics**: Implement more sophisticated data visualization and analytics
+- **Email Notifications**: Automatic notification system for item claims and status updates
+
+## Contributors
+
+- [Your Name](https://github.com/your-username)
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
