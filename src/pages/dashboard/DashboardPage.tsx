@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import {
   Box,
   Typography,
@@ -8,6 +8,8 @@ import {
   CardContent,
   CardHeader,
   Divider,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
 import {
   Inventory as InventoryIcon,
@@ -15,7 +17,7 @@ import {
   Check as CheckIcon,
   CardGiftcard as DonateIcon,
 } from "@mui/icons-material";
-import { useAppSelector } from "../../hooks/useRedux";
+import { useAppSelector, useAppDispatch } from "../../hooks/useRedux";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -27,6 +29,7 @@ import {
   Title,
 } from "chart.js";
 import { Pie, Bar } from "react-chartjs-2";
+import { fetchDashboardStats } from "../../store/slices/itemsSlice";
 
 // Register ChartJS components
 ChartJS.register(
@@ -39,83 +42,58 @@ ChartJS.register(
   Title
 );
 
-// Mock data until we have a real API
-const generateMockData = () => {
-  return {
-    lostItems: 24,
-    foundItems: 18,
-    claimedItems: 15,
-    donatedItems: 5,
-    successRate: 62.5, // Percentage of lost items that were found and claimed
-    itemCategories: {
-      book: 12,
-      electronics: 8,
-      clothing: 14,
-      accessory: 10,
-      document: 6,
-      other: 12,
-    },
-    monthlyData: {
-      labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-      lost: [5, 8, 7, 9, 6, 8],
-      found: [3, 5, 7, 4, 6, 7],
-    },
-    locations: {
-      Canteen: 10,
-      Gymnasium: 8,
-      Library: 12,
-      "JEB Building": 7,
-      "SB Building": 9,
-      Other: 16,
-    },
-  };
-};
-
-const mockData = generateMockData();
-
 const DashboardPage: React.FC = () => {
-  // In a real app, we would fetch data from an API or Redux store
-  const { items } = useAppSelector((state) => state.items);
+  const dispatch = useAppDispatch();
+  const { stats, loading, error } = useAppSelector((state) => state.items);
 
-  // Mock status counts until we have real data
-  const statusCounts = {
-    lost:
-      items.filter((item) => item.status === "lost").length ||
-      mockData.lostItems,
-    found:
-      items.filter((item) => item.status === "found").length ||
-      mockData.foundItems,
-    claimed:
-      items.filter((item) => item.status === "claimed").length ||
-      mockData.claimedItems,
-    donated:
-      items.filter((item) => item.status === "donated").length ||
-      mockData.donatedItems,
-  };
+  useEffect(() => {
+    dispatch(fetchDashboardStats());
+  }, [dispatch]);
+
+  // Early return if loading
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // If stats are not loaded yet, return placeholder
+  if (!stats) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Typography variant="h4" gutterBottom>
+          Dashboard
+        </Typography>
+        <Alert severity="info">Loading dashboard data...</Alert>
+      </Box>
+    );
+  }
 
   // Stats cards data
   const statsCards = [
     {
       title: "Lost Items",
-      value: statusCounts.lost,
+      value: stats.lostItems,
       icon: <FindIcon fontSize="large" color="error" />,
       color: "#ffa1a1",
     },
     {
       title: "Found Items",
-      value: statusCounts.found,
+      value: stats.foundItems,
       icon: <InventoryIcon fontSize="large" color="info" />,
       color: "#a1d2ff",
     },
     {
       title: "Claimed Items",
-      value: statusCounts.claimed,
+      value: stats.claimedItems,
       icon: <CheckIcon fontSize="large" color="success" />,
       color: "#a1ffa1",
     },
     {
       title: "Donated Items",
-      value: statusCounts.donated,
+      value: stats.donatedItems,
       icon: <DonateIcon fontSize="large" color="warning" />,
       color: "#ffeaa1",
     },
@@ -127,10 +105,10 @@ const DashboardPage: React.FC = () => {
     datasets: [
       {
         data: [
-          statusCounts.lost,
-          statusCounts.found,
-          statusCounts.claimed,
-          statusCounts.donated,
+          stats.lostItems,
+          stats.foundItems,
+          stats.claimedItems,
+          stats.donatedItems,
         ],
         backgroundColor: ["#ff6384", "#36a2eb", "#4bc0c0", "#ffcd56"],
         hoverBackgroundColor: ["#ff4c76", "#2e90d1", "#3eabab", "#ffc43b"],
@@ -140,11 +118,11 @@ const DashboardPage: React.FC = () => {
 
   // Chart data for categories
   const categoryChartData = {
-    labels: Object.keys(mockData.itemCategories),
+    labels: Object.keys(stats.itemCategories),
     datasets: [
       {
         label: "Items by Category",
-        data: Object.values(mockData.itemCategories),
+        data: Object.values(stats.itemCategories),
         backgroundColor: [
           "#4bc0c0",
           "#36a2eb",
@@ -159,16 +137,16 @@ const DashboardPage: React.FC = () => {
 
   // Chart data for monthly trends
   const monthlyChartData = {
-    labels: mockData.monthlyData.labels,
+    labels: stats.monthlyData.labels,
     datasets: [
       {
         label: "Lost Items",
-        data: mockData.monthlyData.lost,
+        data: stats.monthlyData.lost,
         backgroundColor: "#ff6384",
       },
       {
         label: "Found Items",
-        data: mockData.monthlyData.found,
+        data: stats.monthlyData.found,
         backgroundColor: "#36a2eb",
       },
     ],
@@ -191,6 +169,12 @@ const DashboardPage: React.FC = () => {
         Dashboard
       </Typography>
 
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {statsCards.map((card, index) => (
@@ -202,15 +186,15 @@ const DashboardPage: React.FC = () => {
               <Box
                 sx={{
                   display: "flex",
-                  justifyContent: "space-between",
                   alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
                 <Box>
                   <Typography variant="h6" component="div">
                     {card.title}
                   </Typography>
-                  <Typography variant="h4" component="div">
+                  <Typography variant="h3" component="div">
                     {card.value}
                   </Typography>
                 </Box>
@@ -221,92 +205,95 @@ const DashboardPage: React.FC = () => {
         ))}
       </Grid>
 
-      {/* Charts */}
       <Grid container spacing={3}>
         {/* Status Distribution */}
-        <Grid item xs={12} md={6} lg={4}>
-          <Card>
-            <CardHeader title="Status Distribution" />
-            <Divider />
-            <CardContent sx={{ height: 300 }}>
-              <Pie data={pieChartData} />
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Category Distribution */}
-        <Grid item xs={12} md={6} lg={4}>
-          <Card>
-            <CardHeader title="Items by Category" />
-            <Divider />
-            <CardContent sx={{ height: 300 }}>
-              <Pie data={categoryChartData} />
-            </CardContent>
-          </Card>
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2, height: 300 }}>
+            <Typography variant="h6" gutterBottom>
+              Item Status Distribution
+            </Typography>
+            <Box sx={{ height: 230 }}>
+              <Pie
+                data={pieChartData}
+                options={{ responsive: true, maintainAspectRatio: false }}
+              />
+            </Box>
+          </Paper>
         </Grid>
 
         {/* Success Rate */}
-        <Grid item xs={12} md={6} lg={4}>
-          <Card>
-            <CardHeader title="Claim Success Rate" />
-            <Divider />
-            <CardContent
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2, height: 300 }}>
+            <Typography variant="h6" gutterBottom>
+              Success Rate
+            </Typography>
+            <Box
               sx={{
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                height: 300,
+                flexDirection: "column",
+                height: 230,
               }}
             >
               <Box
                 sx={{
                   position: "relative",
-                  display: "inline-flex",
-                  width: 200,
-                  height: 200,
+                  width: 150,
+                  height: 150,
+                  borderRadius: "50%",
+                  background: `conic-gradient(#4caf50 ${stats.successRate}%, #e0e0e0 0)`,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
                 <Box
                   sx={{
+                    width: 120,
+                    height: 120,
+                    borderRadius: "50%",
+                    background: "white",
                     display: "flex",
-                    flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
-                    width: "100%",
-                    height: "100%",
-                    position: "absolute",
                   }}
                 >
-                  <Typography variant="h4" component="div" color="primary">
-                    {mockData.successRate}%
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Claim Success
-                  </Typography>
+                  <Typography variant="h4">{stats.successRate}%</Typography>
                 </Box>
-                <Box
-                  sx={{
-                    width: "100%",
-                    height: "100%",
-                    borderRadius: "50%",
-                    background: `radial-gradient(closest-side, white 79%, transparent 80%),
-                                conic-gradient(#4caf50 ${mockData.successRate}%, #e0e0e0 0)`,
-                  }}
-                />
               </Box>
-            </CardContent>
-          </Card>
+              <Typography variant="body2" sx={{ mt: 2 }}>
+                Percentage of items that were claimed or donated
+              </Typography>
+            </Box>
+          </Paper>
         </Grid>
 
-        {/* Monthly Trend */}
-        <Grid item xs={12}>
-          <Card>
-            <CardHeader title="Monthly Trends" />
-            <Divider />
-            <CardContent sx={{ height: 400 }}>
+        {/* Categories */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2, height: 300 }}>
+            <Typography variant="h6" gutterBottom>
+              Items by Category
+            </Typography>
+            <Box sx={{ height: 230 }}>
+              <Pie
+                data={categoryChartData}
+                options={{ responsive: true, maintainAspectRatio: false }}
+              />
+            </Box>
+          </Paper>
+        </Grid>
+
+        {/* Monthly Stats */}
+        <Grid item xs={12} md={6}>
+          <Paper sx={{ p: 2, height: 300 }}>
+            <Typography variant="h6" gutterBottom>
+              Monthly Trends
+            </Typography>
+            <Box sx={{ height: 230 }}>
               <Bar data={monthlyChartData} options={barChartOptions} />
-            </CardContent>
-          </Card>
+            </Box>
+          </Paper>
         </Grid>
       </Grid>
     </Box>

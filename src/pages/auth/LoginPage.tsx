@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -12,78 +12,43 @@ import {
 } from "@mui/material";
 import { useNavigate } from "react-router-dom";
 import { useAppDispatch, useAppSelector } from "../../hooks/useRedux";
-import {
-  loginStart,
-  loginSuccess,
-  loginFailure,
-} from "../../store/slices/authSlice";
-import { User } from "../../types/user";
-
-// This is a mock function for login until we have a real API
-const mockLogin = (
-  username: string,
-  password: string
-): Promise<{ user: User; token: string }> => {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => {
-      // For demo purposes, accept "admin" with password "password"
-      if (username === "admin" && password === "password") {
-        resolve({
-          user: {
-            id: "1",
-            username: "admin",
-            email: "admin@dlsl.edu.ph",
-            name: "Admin User",
-            role: "admin",
-            createdAt: new Date(),
-            department: "SDFO",
-          },
-          token: "mock-jwt-token",
-        });
-      } else if (username === "superadmin" && password === "password") {
-        resolve({
-          user: {
-            id: "2",
-            username: "superadmin",
-            email: "superadmin@dlsl.edu.ph",
-            name: "Super Admin",
-            role: "superAdmin",
-            createdAt: new Date(),
-            department: "SDFO",
-          },
-          token: "mock-jwt-token-super",
-        });
-      } else {
-        reject(new Error("Invalid username or password"));
-      }
-    }, 1000); // Simulate network delay
-  });
-};
+import { login, clearError } from "../../store/slices/authSlice";
 
 const LoginPage: React.FC = () => {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const navigate = useNavigate();
   const dispatch = useAppDispatch();
-  const { loading, error } = useAppSelector((state) => state.auth);
+  const { loading, error, isAuthenticated } = useAppSelector((state) => state.auth);
+
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate("/dashboard");
+    }
+    return () => {
+      // Clear any errors when component unmounts
+      dispatch(clearError());
+    };
+  }, [isAuthenticated, navigate, dispatch]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!username || !password) {
-      dispatch(loginFailure("Please enter both username and password"));
+      // We're using the API's validation now, but let's still validate locally
       return;
     }
 
-    try {
-      dispatch(loginStart());
-      // In a real app, this would be an API call
-      const result = await mockLogin(username, password);
-      dispatch(loginSuccess(result));
-      navigate("/dashboard");
-    } catch (error) {
-      dispatch(loginFailure((error as Error).message));
-    }
+    // Dispatch login action
+    dispatch(login({ username, password }))
+      .unwrap()
+      .then(() => {
+        navigate("/dashboard");
+      })
+      .catch(() => {
+        // Error is handled in the reducer
+      });
   };
 
   return (

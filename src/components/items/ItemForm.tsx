@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Box,
   Grid,
@@ -12,11 +12,17 @@ import {
   Paper,
   Divider,
   SelectChangeEvent,
+  IconButton,
+  CircularProgress,
+  Alert,
 } from "@mui/material";
 import { DatePicker } from "@mui/x-date-pickers/DatePicker";
 import { AdapterDateFns } from "@mui/x-date-pickers/AdapterDateFns";
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
 import { Item, ItemType, Person } from "../../types/item";
+import PhotoCamera from "@mui/icons-material/PhotoCamera";
+import DeleteIcon from "@mui/icons-material/Delete";
+import uploadService from "../../services/uploadService";
 
 interface ItemFormProps {
   formType: "lost" | "found";
@@ -25,12 +31,41 @@ interface ItemFormProps {
   initialData?: Partial<Item>;
 }
 
+// Type guard to check if an object is a Person
+const isPersonObject = (obj: any): obj is Person => {
+  return obj && typeof obj === 'object' && 'name' in obj;
+};
+
 const ItemForm: React.FC<ItemFormProps> = ({
   formType,
   onSubmit,
   onCancel,
   initialData,
 }) => {
+  // Parse reportedBy from initialData safely
+  const reporterFromInitialData = (): Person => {
+    if (initialData?.reportedBy) {
+      if (isPersonObject(initialData.reportedBy)) {
+        return {
+          name: initialData.reportedBy.name || "",
+          type: initialData.reportedBy.type || "student",
+          studentId: initialData.reportedBy.studentId,
+          employeeId: initialData.reportedBy.employeeId,
+          email: initialData.reportedBy.email,
+          phone: initialData.reportedBy.phone
+        };
+      }
+    }
+    return {
+      name: "",
+      type: "student",
+      studentId: undefined,
+      employeeId: undefined,
+      email: undefined,
+      phone: undefined
+    };
+  };
+
   const [item, setItem] = useState<
     Omit<Partial<Item>, "reportedBy" | "foundBy">
   >(
@@ -48,6 +83,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
           storageLocation: initialData.storageLocation,
           foundDate: initialData.foundDate,
           notes: initialData.notes,
+          imageUrl: initialData.imageUrl,
+          itemId: initialData.itemId,
         }
       : {
           type: "book",
@@ -61,26 +98,29 @@ const ItemForm: React.FC<ItemFormProps> = ({
           foundLocation: "",
           storageLocation: "",
           foundDate: formType === "found" ? new Date() : undefined,
+          imageUrl: "",
         }
   );
 
-  const [reporter, setReporter] = useState<Person>({
-    name: initialData?.reportedBy?.name || "",
-    type: initialData?.reportedBy?.type || "student",
-    studentId: initialData?.reportedBy?.studentId,
-    employeeId: initialData?.reportedBy?.employeeId,
-    email: initialData?.reportedBy?.email,
-    phone: initialData?.reportedBy?.phone,
-  });
+  const [reporter, setReporter] = useState<Person>(reporterFromInitialData());
 
-  const [finder, setFinder] = useState<Person>({
-    name: initialData?.foundBy?.name || "",
-    type: initialData?.foundBy?.type || "student",
-    studentId: initialData?.foundBy?.studentId,
-    employeeId: initialData?.foundBy?.employeeId,
-    email: initialData?.foundBy?.email,
-    phone: initialData?.foundBy?.phone,
-  });
+  // Image state
+  const [previewImage, setPreviewImage] = useState<string | null>(
+    initialData?.imageUrl || null
+  );
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Add states for image upload
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Update useEffect for image preview
+  useEffect(() => {
+    if (initialData?.imageUrl) {
+      setPreviewImage(uploadService.formatImageUrl(initialData.imageUrl));
+      setItem(prev => ({ ...prev, imageUrl: initialData.imageUrl }));
+    }
+  }, [initialData]);
 
   const handleItemChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -104,18 +144,6 @@ const ItemForm: React.FC<ItemFormProps> = ({
     });
   };
 
-  const handleFinderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFinder({ ...finder, [name]: value });
-  };
-
-  const handleFinderTypeChange = (e: SelectChangeEvent<string>) => {
-    setFinder({
-      ...finder,
-      type: e.target.value as "student" | "faculty" | "staff" | "visitor",
-    });
-  };
-
   const handleDateReportedChange = (date: Date | null) => {
     if (date) {
       setItem({ ...item, dateReported: date });
@@ -128,6 +156,49 @@ const ItemForm: React.FC<ItemFormProps> = ({
     }
   };
 
+  // Update the image upload handler to use the upload service
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setIsUploading(true);
+      setUploadError(null);
+      
+      try {
+        // Show preview immediately
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setPreviewImage(reader.result as string);
+        };
+        reader.readAsDataURL(file);
+        
+        // Upload to server
+        const imageUrl = await uploadService.uploadImage(file);
+        setItem({ ...item, imageUrl });
+        setIsUploading(false);
+      } catch (error) {
+        setUploadError("Error uploading image. Please try again.");
+        setIsUploading(false);
+      }
+    }
+  };
+
+  // Update the remove image handler to use the upload service
+  const handleRemoveImage = async () => {
+    if (item.imageUrl && item.imageUrl.startsWith('/uploads/')) {
+      try {
+        await uploadService.deleteImage(item.imageUrl);
+      } catch (error) {
+        console.error('Error deleting image:', error);
+      }
+    }
+    
+    setPreviewImage(null);
+    setItem({ ...item, imageUrl: undefined });
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -135,7 +206,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
     const completeItem: Partial<Item> = {
       ...item,
       reportedBy: reporter.name ? reporter : undefined,
-      foundBy: formType === "found" && finder.name ? finder : undefined,
+      // For found items, the person who reports it (reporter) is also considered the finder
+      foundBy: formType === "found" && reporter.name ? reporter : undefined,
     };
 
     onSubmit(completeItem);
@@ -150,6 +222,20 @@ const ItemForm: React.FC<ItemFormProps> = ({
         </Typography>
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2}>
+            {initialData?.itemId && (
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Item ID"
+                  name="itemId"
+                  value={initialData.itemId}
+                  InputProps={{
+                    readOnly: true,
+                  }}
+                  variant="filled"
+                />
+              </Grid>
+            )}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -158,6 +244,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 name="name"
                 value={item.name || ""}
                 onChange={handleItemChange}
+                placeholder="Enter a descriptive name for the item"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -174,6 +261,13 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   <MenuItem value="clothing">Clothing</MenuItem>
                   <MenuItem value="accessory">Accessory</MenuItem>
                   <MenuItem value="document">Document</MenuItem>
+                  <MenuItem value="stationery">Stationery</MenuItem>
+                  <MenuItem value="jewelry">Jewelry</MenuItem>
+                  <MenuItem value="bag">Bag</MenuItem>
+                  <MenuItem value="id_card">ID Card</MenuItem>
+                  <MenuItem value="key">Key</MenuItem>
+                  <MenuItem value="wallet">Wallet</MenuItem>
+                  <MenuItem value="money">Money</MenuItem>
                   <MenuItem value="other">Other</MenuItem>
                 </Select>
               </FormControl>
@@ -212,10 +306,77 @@ const ItemForm: React.FC<ItemFormProps> = ({
             <Grid item xs={12} sm={6}>
               <DatePicker
                 label="Date Reported"
-                value={item.dateReported || null}
+                value={item.dateReported ? (typeof item.dateReported === 'string' ? new Date(item.dateReported) : item.dateReported) : null}
                 onChange={handleDateReportedChange}
               />
             </Grid>
+
+            {/* Image Upload Section */}
+            <Grid item xs={12}>
+              <Box sx={{ mt: 2, mb: 2 }}>
+                <Typography variant="subtitle1" gutterBottom>
+                  Item Image
+                </Typography>
+                {uploadError && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {uploadError}
+                  </Alert>
+                )}
+                
+                {!previewImage && (
+                  <>
+                    <input
+                      accept="image/*"
+                      style={{ display: 'none' }}
+                      id="item-image-upload"
+                      type="file"
+                      onChange={handleImageUpload}
+                      ref={fileInputRef}
+                      disabled={isUploading}
+                    />
+                    <label htmlFor="item-image-upload">
+                      <Button
+                        variant="outlined"
+                        component="span"
+                        startIcon={isUploading ? <CircularProgress size={16} /> : <PhotoCamera />}
+                        disabled={isUploading}
+                      >
+                        {isUploading ? 'Uploading...' : 'Upload Image'}
+                      </Button>
+                    </label>
+                  </>
+                )}
+
+                {previewImage && (
+                  <Box sx={{ mt: 2, position: 'relative', display: 'inline-block' }}>
+                    <img
+                      src={previewImage}
+                      alt="Item preview"
+                      style={{ maxWidth: '100%', maxHeight: '200px' }}
+                      onError={(e) => {
+                        e.currentTarget.src = '/placeholder-image.png';
+                        e.currentTarget.onerror = null;
+                      }}
+                    />
+                    <IconButton
+                      aria-label="delete image"
+                      size="small"
+                      sx={{
+                        position: 'absolute',
+                        top: 0,
+                        right: 0,
+                        bgcolor: 'rgba(255, 255, 255, 0.7)',
+                      }}
+                      onClick={handleRemoveImage}
+                      disabled={isUploading}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Box>
+                )}
+              </Box>
+            </Grid>
+
             {formType === "lost" && (
               <Grid item xs={12} sm={6}>
                 <TextField
@@ -244,7 +405,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 <Grid item xs={12} sm={6}>
                   <DatePicker
                     label="Date Found"
-                    value={item.foundDate || null}
+                    value={item.foundDate ? (typeof item.foundDate === 'string' ? new Date(item.foundDate) : item.foundDate) : null}
                     onChange={handleFoundDateChange}
                   />
                 </Grid>
@@ -266,7 +427,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
 
         {/* Reporter Information Section */}
         <Typography variant="h6" gutterBottom>
-          {formType === "lost" ? "Reporter Information" : "Reported By"}
+          {formType === "lost" ? "Reporter Information" : "Reported By (Finder)"}
         </Typography>
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2}>
@@ -338,85 +499,6 @@ const ItemForm: React.FC<ItemFormProps> = ({
             </Grid>
           </Grid>
         </Paper>
-
-        {/* Finder Information Section (Only for Found Items) */}
-        {formType === "found" && (
-          <>
-            <Typography variant="h6" gutterBottom>
-              Found By
-            </Typography>
-            <Paper sx={{ p: 2, mb: 3 }}>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    required
-                    label="Name"
-                    name="name"
-                    value={finder.name || ""}
-                    onChange={handleFinderChange}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Type</InputLabel>
-                    <Select
-                      value={finder.type || "student"}
-                      label="Type"
-                      onChange={handleFinderTypeChange}
-                    >
-                      <MenuItem value="student">Student</MenuItem>
-                      <MenuItem value="faculty">Faculty</MenuItem>
-                      <MenuItem value="staff">Staff</MenuItem>
-                      <MenuItem value="visitor">Visitor</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                {finder.type === "student" && (
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Student ID"
-                      name="studentId"
-                      value={finder.studentId || ""}
-                      onChange={handleFinderChange}
-                    />
-                  </Grid>
-                )}
-                {(finder.type === "faculty" || finder.type === "staff") && (
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Employee ID"
-                      name="employeeId"
-                      value={finder.employeeId || ""}
-                      onChange={handleFinderChange}
-                    />
-                  </Grid>
-                )}
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Email"
-                    name="email"
-                    type="email"
-                    value={finder.email || ""}
-                    onChange={handleFinderChange}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Phone"
-                    name="phone"
-                    value={finder.phone || ""}
-                    onChange={handleFinderChange}
-                  />
-                </Grid>
-              </Grid>
-            </Paper>
-          </>
-        )}
 
         {/* Notes Section */}
         <Typography variant="h6" gutterBottom>

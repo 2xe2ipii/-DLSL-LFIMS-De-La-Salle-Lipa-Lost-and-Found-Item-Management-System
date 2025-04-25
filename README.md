@@ -1,112 +1,128 @@
 # DLSL Lost and Found Item Management System (LFIMS)
 
-A comprehensive system for managing lost and found items within the De La Salle Lipa campus.
+A web application for managing lost and found items at De La Salle Lipa.
 
-## Overview
+## Prerequisites
 
-The DLSL Lost and Found Item Management System (LFIMS) is designed to streamline the process of managing lost and found items within the De La Salle Lipa campus. The system is used by the Student Discipline and Formation Office (SDFO) to track and manage items that have been lost and found on campus.
+- Node.js (v16 or higher)
+- MongoDB (local or Atlas)
 
-## Features
-
-- **Dashboard** - Overview of statistics and metrics
-- **Items Management**
-  - Lost Items - Log and track lost items
-  - Found Items - Log and track found items
-  - Claimed Items - Record items that have been claimed by their owners
-  - Donated Items - Track items that have been donated after not being claimed
-- **Search and Filter** - Quickly find items using various criteria
-- **Claim Verification** - Process for verifying claims to found items
-- **Reports Generation** - Create monthly, yearly, and custom reports
-- **User Management** - Different access levels based on roles
-
-## Technology Stack
-
-- **Frontend**: React, TypeScript, Material-UI
-- **State Management**: Redux with Redux Toolkit
-- **Routing**: React Router
-- **Charts**: Chart.js with React-Chartjs-2
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js (v14.0 or higher)
-- npm (v6.0 or higher)
-
-### Installation
+## Setup Instructions
 
 1. Clone the repository
-
-   ```
-   git clone https://github.com/your-username/dlsl-lfims.git
-   cd dlsl-lfims
-   ```
-
-2. Install dependencies
-
+2. Install dependencies:
    ```
    npm install
    ```
-
-3. Start the development server
-
+3. Create a `.env` file in the root directory with the following variables:
    ```
-   npm start
+   PORT=5001
+   MONGODB_URI=mongodb://localhost:27017/dlsl-lfims
+   JWT_SECRET=your_secret_key_here
+   ```
+   
+   Note: If you don't have MongoDB installed locally, you can use MongoDB Atlas by setting:
+   ```
+   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/dlsl-lfims
    ```
 
-4. Open http://localhost:3000 to view the application in your browser
+4. (Optional) Seed the database with initial data:
+   ```
+   npm run seed
+   ```
 
-### Login Credentials (for development)
+5. Start the development server:
+   ```
+   npm run dev
+   ```
+   
+   This will start:
+   - React frontend on http://localhost:3001
+   - Express backend on http://localhost:5001
 
-- **Admin**
+## Login Credentials
 
+- Default admin account:
   - Username: admin
-  - Password: password
+  - Password: adminpassword
 
-- **Super Admin**
-  - Username: superadmin
-  - Password: password
+## Features
 
-## Project Structure
+### Core Features
+- Lost and Found Item Management
+- User Authentication
+- Claim Processing
+- Donation Management
+- Reporting and Statistics
+
+### New Features
+
+#### 1. Item Image Upload
+- Upload images when reporting lost items or registering found items
+- View item images in the item details
+- Delete images if needed
+
+#### 2. Report Generation
+- Generate various types of reports (Monthly, Yearly, Custom date range)
+- Filter reports by item status
+- Export reports as PDF documents
+- Print reports directly
+
+#### 3. Donation Certificate
+- Generate donation certificates for unclaimed items
+- Download certificates as PDF documents
+- Properly formatted certificates with DLSL branding
+
+## Troubleshooting
+
+If you encounter "cannot reach this page" errors:
+
+1. Make sure both frontend and backend servers are running
+2. Try running them separately:
+   - Frontend: `npm start`
+   - Backend: `npm run server`
+3. Check for MongoDB connection errors in the console
+4. Ensure no other applications are using ports 3001 and 5001
+5. If port 5001 is in use by another process, change it in the .env file
+
+## Troubleshooting User Management
+
+If you encounter issues with the User Management system, follow these steps:
+
+### Common Issues and Solutions
+
+1. **404 Not Found when loading admin users**:
+   - Ensure the server is running (`npm run server`)
+   - Check that the API routes in `authService.ts` don't have extra leading slashes
+   - Verify that the superAdmin user exists in the database
+
+2. **Cannot create admin users**:
+   - Ensure you're logged in as a superAdmin
+   - Check the browser console for detailed error messages
+   - Verify that all required fields are filled out correctly
+
+3. **Access Denied errors**:
+   - Make sure your token is valid and not expired
+   - Confirm that your user account has the 'superAdmin' role
+   - Check the server logs for detailed authentication errors
+
+### Authentication Flow
+
+1. Only superAdmins can create admin users
+2. Only superAdmins can view the list of admin users
+3. Only superAdmins can reset admin passwords
+
+### Login Credentials
+Default superadmin credentials:
+- Username: superadmin
+- Password: 12345678
+
+### Development Setup
+
+To start the development environment:
 
 ```
-dlsl-lfims/
-├── public/
-├── src/
-│   ├── assets/           # Images, icons, etc.
-│   │   ├── common/       # Shared components
-│   │   ├── dashboard/    # Dashboard components
-│   │   ├── items/        # Item-related components
-│   │   ├── layout/       # Layout components
-│   │   └── reports/      # Report components
-│   ├── hooks/            # Custom React hooks
-│   ├── pages/            # Page components
-│   │   ├── auth/         # Authentication pages
-│   │   ├── dashboard/    # Dashboard page
-│   │   ├── items/        # Items pages
-│   │   ├── profile/      # User profile page
-│   │   ├── reports/      # Reports pages
-│   │   └── settings/     # Settings page
-│   ├── store/            # Redux store
-│   │   └── slices/       # Redux slices
-│   ├── types/            # TypeScript type definitions
-│   └── utils/            # Utility functions
-├── package.json
-└── tsconfig.json
+npm run dev
 ```
 
-## Future Development Plans
-
-- **Database Integration**: Connect to a backend database for persistent storage
-- **API Development**: Create a RESTful API for data operations
-- **Mobile Application**: Develop a mobile app for easier access
-- **Advanced Analytics**: Implement more sophisticated data visualization and analytics
-- **Email Notifications**: Automatic notification system for item claims and status updates
-
-## Contributors
-
-- [Your Name](https://github.com/your-username)
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
+This will start both the React frontend and Node.js backend.

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { styled, useTheme } from "@mui/material/styles";
 import {
   Box,
@@ -37,7 +37,7 @@ import {
 } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "../../hooks/useRedux";
-import { logout } from "../../store/slices/authSlice";
+import { logout, loadUser } from "../../store/slices/authSlice";
 
 const drawerWidth = 240;
 
@@ -97,7 +97,15 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const dispatch = useAppDispatch();
-  const { user } = useAppSelector((state) => state.auth);
+  const { user, isAuthenticated } = useAppSelector((state) => state.auth);
+
+  // If user is authenticated but no user data, load it
+  useEffect(() => {
+    if (isAuthenticated && !user) {
+      console.log('MainLayout: User is authenticated but no user data, loading...');
+      dispatch(loadUser());
+    }
+  }, [isAuthenticated, user, dispatch]);
 
   const [open, setOpen] = useState(true);
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -129,6 +137,10 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
     setItemsMenuOpen(!itemsMenuOpen);
   };
 
+  // Safe check for superAdmin role
+  const isSuperAdmin = user?.role === 'superAdmin';
+  console.log(`MainLayout: User role: ${user?.role}, isSuperAdmin: ${isSuperAdmin}`);
+
   const menuItems = [
     { text: "Dashboard", icon: <DashboardIcon />, path: "/dashboard" },
     {
@@ -144,14 +156,18 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           path: "/items/claimed",
         },
         {
-          text: "Donated Items",
+          text: "Donation",
           icon: <DonatedIcon />,
-          path: "/items/donated",
+          path: "/items/donation",
         },
       ],
     },
     { text: "Reports", icon: <AssessmentIcon />, path: "/reports" },
     { text: "Settings", icon: <SettingsIcon />, path: "/settings" },
+    // Only show User Management for superAdmin
+    ...(isSuperAdmin ? [
+      { text: "User Management", icon: <PersonIcon />, path: "/admin/users" }
+    ] : []),
   ];
 
   return (

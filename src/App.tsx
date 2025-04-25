@@ -1,26 +1,28 @@
 import React from "react";
 import {
-  BrowserRouter as Router,
+  HashRouter as Router,
   Routes,
   Route,
   Navigate,
 } from "react-router-dom";
-import { Provider } from "react-redux";
 import { ThemeProvider, createTheme } from "@mui/material/styles";
 import CssBaseline from "@mui/material/CssBaseline";
 
-import store from "./store";
 import MainLayout from "./components/layout/MainLayout";
 import LoginPage from "./pages/auth/LoginPage";
 import DashboardPage from "./pages/dashboard/DashboardPage";
 import LostItemsPage from "./pages/items/LostItemsPage";
 import FoundItemsPage from "./pages/items/FoundItemsPage";
 import ClaimedItemsPage from "./pages/items/ClaimedItemsPage";
-import DonatedItemsPage from "./pages/items/DonatedItemsPage";
+import ForDonationPage from "./pages/items/ForDonationPage";
 import ReportsPage from "./pages/reports/ReportsPage";
-import ProfilePage from "./pages/profile/ProfilePage";
 import SettingsPage from "./pages/settings/SettingsPage";
+import ProfilePage from "./pages/profile/ProfilePage";
 import { useAppSelector } from "./hooks/useRedux";
+import { UserRole } from './types/user';
+import AccessDeniedPage from './pages/AccessDeniedPage';
+import UserManagementPage from './pages/admin/UserManagementPage';
+import RoleBasedRoute from './components/RoleBasedRoute';
 
 // Create a theme
 const theme = createTheme({
@@ -70,17 +72,6 @@ const AppRoutes = () => {
         />
 
         <Route
-          path="/items"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <LostItemsPage />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
           path="/items/lost"
           element={
             <ProtectedRoute>
@@ -114,11 +105,11 @@ const AppRoutes = () => {
         />
 
         <Route
-          path="/items/donated"
+          path="/items/donation"
           element={
             <ProtectedRoute>
               <MainLayout>
-                <DonatedItemsPage />
+                <ForDonationPage />
               </MainLayout>
             </ProtectedRoute>
           }
@@ -136,17 +127,6 @@ const AppRoutes = () => {
         />
 
         <Route
-          path="/profile"
-          element={
-            <ProtectedRoute>
-              <MainLayout>
-                <ProfilePage />
-              </MainLayout>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
           path="/settings"
           element={
             <ProtectedRoute>
@@ -157,7 +137,30 @@ const AppRoutes = () => {
           }
         />
 
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <MainLayout>
+                <ProfilePage />
+              </MainLayout>
+            </ProtectedRoute>
+          }
+        />
+
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+        {/* Admin Routes */}
+        <Route path="/admin/users" element={
+          <RoleBasedRoute allowedRoles={['superAdmin'] as UserRole[]}>
+            <MainLayout>
+              <UserManagementPage />
+            </MainLayout>
+          </RoleBasedRoute>
+        } />
+
+        {/* Access Denied Page */}
+        <Route path="/access-denied" element={<AccessDeniedPage />} />
       </Routes>
     </Router>
   );
@@ -165,12 +168,10 @@ const AppRoutes = () => {
 
 const App = () => {
   return (
-    <Provider store={store}>
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <AppRoutes />
-      </ThemeProvider>
-    </Provider>
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <AppRoutes />
+    </ThemeProvider>
   );
 };
 
