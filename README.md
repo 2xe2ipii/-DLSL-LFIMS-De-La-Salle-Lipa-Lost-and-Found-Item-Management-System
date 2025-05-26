@@ -14,7 +14,7 @@ A web application for managing lost and found items at De La Salle Lipa.
    ```
    npm install
    ```
-3. Create a `.env` file in the root directory with the following variables:
+3. If not cloned, create a `.env` file in the root directory with the following variables:
    ```
    PORT=5001
    MONGODB_URI=mongodb://localhost:27017/dlsl-lfims
@@ -26,12 +26,15 @@ A web application for managing lost and found items at De La Salle Lipa.
    MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/dlsl-lfims
    ```
 
-4. (Optional) Seed the database with initial data:
-   ```
+4. Run: --> cd server --> node forceFixUsers.js
+
+5. (Optional)Seed the database with initial data:
+
+    ```
    npm run seed
    ```
 
-5. Start the development server:
+7. Start the development server:
    ```
    npm run dev
    ```
@@ -40,11 +43,13 @@ A web application for managing lost and found items at De La Salle Lipa.
    - React frontend on http://localhost:3001
    - Express backend on http://localhost:5001
 
+8. npm start
+
 ## Login Credentials
 
 - Default admin account:
-  - Username: admin
-  - Password: adminpassword
+  - Username: superadmin
+  - Password: 12345678
 
 ## Features
 
