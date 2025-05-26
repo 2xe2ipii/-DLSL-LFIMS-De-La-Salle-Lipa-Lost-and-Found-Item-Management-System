@@ -27,6 +27,10 @@ import {
   CircularProgress,
   Alert,
   Divider,
+  InputAdornment,
+  useMediaQuery,
+  useTheme,
+  Tooltip,
 } from "@mui/material";
 import {
   Add as AddIcon,
@@ -35,17 +39,21 @@ import {
   Visibility as ViewIcon,
   AssignmentReturn as ClaimIcon,
   ImageNotSupported as ImageNotSupportedIcon,
+  Delete as DeleteIcon,
+  Warning as WarningIcon,
 } from "@mui/icons-material";
 import { useAppSelector, useAppDispatch } from "../../hooks/useRedux";
 import { Item, ItemType } from "../../types/item";
 import ItemForm from "../../components/items/ItemForm";
-import { fetchItemsByStatus, addNewItem, changeItemStatusAPI, clearError } from "../../store/slices/itemsSlice";
+import MobileItemList from "../../components/items/MobileItemList";
+import { fetchItemsByStatus, addNewItem, changeItemStatusAPI, clearError, deleteItem } from "../../store/slices/itemsSlice";
 import uploadService from "../../services/uploadService";
 import ImageWithFallback from "../../components/common/ImageWithFallback";
+import { formatToSentenceCase, formatDate } from "../../utils/formatters";
 
 // Helper to check if an item is eligible for donation (older than 3 months)
 const isEligibleForDonation = (item: Item): boolean => {
-  if (item.status !== 'found') return false;
+  if (item.status !== 'in_custody') return false;
   
   const datesToCheck = [item.foundDate, item.dateReported, item.createdAt];
   const earliestDate = datesToCheck
@@ -64,6 +72,9 @@ const isEligibleForDonation = (item: Item): boolean => {
 const FoundItemsPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { items, loading, error } = useAppSelector((state) => state.items);
+  const { user } = useAppSelector((state) => state.auth);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -71,6 +82,7 @@ const FoundItemsPage: React.FC = () => {
   const [filterType, setFilterType] = useState<string>("");
   const [openAddDialog, setOpenAddDialog] = useState(false);
   const [viewItem, setViewItem] = useState<Item | null>(null);
+  const [itemToClaim, setItemToClaim] = useState<Item | null>(null);
   const [openClaimDialog, setOpenClaimDialog] = useState(false);
   const [claimFormData, setClaimFormData] = useState({
     name: "",
@@ -79,12 +91,18 @@ const FoundItemsPage: React.FC = () => {
     employeeId: "",
     email: "",
     phone: "",
+    claimDate: new Date().toISOString().split('T')[0],
   });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
+
+  // Check if user is admin or superAdmin
+  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin';
 
   // Fetch found items when component mounts
   useEffect(() => {
     // Load found items
-    dispatch(fetchItemsByStatus('found'));
+    dispatch(fetchItemsByStatus('in_custody'));
     
     return () => {
       dispatch(clearError());
@@ -128,101 +146,122 @@ const FoundItemsPage: React.FC = () => {
     setOpenAddDialog(false);
   };
 
-  const handleSubmitItem = (newItem: Partial<Item>) => {
-    // Submit the new item to the API
-    dispatch(addNewItem({
-      ...newItem,
-      status: 'found'
-    }))
-      .unwrap()
-      .then(() => {
-        handleCloseAddDialog();
-      })
-      .catch((error) => {
-        console.error('Failed to add item:', error);
-      });
-  };
-
   const handleClaimItem = (item: Item) => {
-    console.log("Selected item for claim - Full item data:", JSON.stringify(item, null, 2)); // More detailed logging
-    if (!item || !item.id) {
-      console.error("Invalid item selected for claim - Item structure:", item);
-      alert("Cannot claim this item at the moment. Please try again.");
-      return;
-    }
-    setClaimFormData({
-      name: '',
-      type: 'student',
-      studentId: '',
-      employeeId: '',
-      email: '',
-      phone: '',
-    });
+    setViewItem(null);
+    setItemToClaim(item);
     setOpenClaimDialog(true);
-    setViewItem(item);
   };
 
   const handleCloseClaimDialog = () => {
     setOpenClaimDialog(false);
+    setItemToClaim(null);
+    setClaimFormData({
+      name: "",
+      type: "student",
+      studentId: "",
+      employeeId: "",
+      email: "",
+      phone: "",
+      claimDate: new Date().toISOString().split('T')[0],
+    });
   };
 
-  const handleClaimFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setClaimFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleClaimTypeChange = (e: SelectChangeEvent<string>) => {
-    setClaimFormData(prev => ({ 
-      ...prev, 
-      type: e.target.value as "student" | "faculty" | "staff" | "visitor" 
-    }));
-  };
-
-  const handleSubmitClaim = () => {
-    if (!viewItem || !viewItem.id) {
-      console.error("Cannot claim item: No valid ID found");
+  const handleClaimSubmit = async () => {
+    if (!itemToClaim?.id) {
+      console.error('No item selected or item has no ID');
       return;
     }
+    
+    try {
+      const claimData = {
+        id: itemToClaim.id,
+        status: 'claimed' as const,
+        additionalData: {
+          claimedBy: {
+            name: claimFormData.name,
+            type: claimFormData.type,
+            studentId: claimFormData.studentId,
+            employeeId: claimFormData.employeeId,
+            email: claimFormData.email,
+            phone: claimFormData.phone
+          },
+          claimDate: new Date(claimFormData.claimDate)
+        }
+      };
 
-    const claimData = {
-      id: viewItem.id,
-      status: 'claimed' as 'lost' | 'found' | 'claimed' | 'donated',
-      additionalData: { claimedBy: claimFormData }
-    };
-
-    console.log("Submitting claim data:", JSON.stringify(claimData, null, 2)); // Log the data being sent
-
-    dispatch(changeItemStatusAPI(claimData))
-      .unwrap()
-      .then(() => {
-        handleCloseClaimDialog();
-        // Refresh items
-        dispatch(fetchItemsByStatus('found'));
-      })
-      .catch((error) => {
-        console.error('Failed to claim item:', error);
-        alert(`Error claiming item: ${error.message || 'Server error'}`);
-      });
+      // Update item status to claimed
+      await dispatch(changeItemStatusAPI(claimData)).unwrap();
+      
+      // Refresh both the found items and claimed items lists
+      await Promise.all([
+        dispatch(fetchItemsByStatus('in_custody')),
+        dispatch(fetchItemsByStatus('claimed'))
+      ]);
+      
+      // Close the dialog and reset form
+      handleCloseClaimDialog();
+    } catch (error) {
+      console.error('Error submitting claim:', error);
+    }
   };
 
-  // Filter items based on search term and filter type
-  const filteredItems = items.filter((item) => {
-    // Ensure we only display items with 'found' status
-    if (item.status !== 'found') return false;
-    
-    // Exclude items eligible for donation (older than 3 months)
-    if (isEligibleForDonation(item)) return false;
-    
-    const matchesSearch =
-      (item.itemId?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.description?.toLowerCase()?.includes(searchTerm.toLowerCase()) || false) ||
-      (item.foundBy && typeof item.foundBy === 'object' && item.foundBy.name?.toLowerCase().includes(searchTerm.toLowerCase()) || false);
+  const handleDeleteClick = (item: Item) => {
+    setItemToDelete(item);
+    setDeleteDialogOpen(true);
+  };
 
-    const matchesType = filterType ? item.type === filterType : true;
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete?.id) return;
+    
+    try {
+      const deleteData = {
+        id: itemToDelete.id,
+        status: 'deleted' as const,
+        additionalData: {
+          deletedBy: {
+            name: user?.name || '',
+            type: (user?.role === 'admin' || user?.role === 'superAdmin' ? 'staff' : 'student') as 'student' | 'faculty' | 'staff' | 'visitor',
+            email: user?.email || '',
+          },
+          deleteDate: new Date()
+        }
+      };
 
-    return matchesSearch && matchesType;
-  });
+      console.log('Deleting item with data:', deleteData); // Debug log
+
+      // Update item status to deleted
+      const result = await dispatch(changeItemStatusAPI(deleteData)).unwrap();
+      console.log('Delete result:', result); // Debug log
+      
+      // Refresh the in custody items list
+      await dispatch(fetchItemsByStatus('in_custody'));
+      
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+    } catch (error) {
+      console.error('Error marking item as deleted:', error);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setItemToDelete(null);
+  };
+
+  const handleEditItem = (item: Item) => {
+    setViewItem(item);
+  };
+
+  // Filter items based on search term and type
+  const filteredItems = items
+    .filter(item => item.status === 'in_custody') // Only show in custody items
+    .filter((item) => {
+      const matchesSearch = item.name
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase());
+      const matchesType = !filterType || item.type === filterType;
+      return matchesSearch && matchesType;
+    });
 
   // Calculate paginated items
   const paginatedItems = filteredItems.slice(
@@ -230,24 +269,10 @@ const FoundItemsPage: React.FC = () => {
     page * rowsPerPage + rowsPerPage
   );
 
-  const formatDate = (date: string | Date | undefined): string => {
-    if (!date) return "N/A";
-    try {
-      return new Date(date).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch (error) {
-      console.error("Error formatting date:", error);
-      return "Invalid Date";
-    }
-  };
-
   return (
-    <Box sx={{ flexGrow: 1, p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Found Items
+    <Box sx={{ p: isMobile ? 2 : 3 }}>
+      <Typography variant={isMobile ? "h5" : "h4"} gutterBottom>
+        In Custody
       </Typography>
 
       {error && (
@@ -256,18 +281,21 @@ const FoundItemsPage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Search and Filter Bar */}
-      <Paper sx={{ p: 2, mb: 3 }}>
+      <Paper sx={{ p: 2, mb: 2 }}>
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} sm={6} md={4}>
             <TextField
               fullWidth
-              label="Search"
               variant="outlined"
+              placeholder="Search items..."
               value={searchTerm}
               onChange={handleSearchChange}
               InputProps={{
-                startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
               }}
             />
           </Grid>
@@ -296,44 +324,55 @@ const FoundItemsPage: React.FC = () => {
               </Select>
             </FormControl>
           </Grid>
-          <Grid
-            item
-            xs={12}
-            sm={12}
-            md={5}
-            sx={{
-              display: "flex",
-              justifyContent: { xs: "flex-start", md: "flex-end" },
-            }}
-          >
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleAddItem}
+          {isAdmin && (
+            <Grid
+              item
+              xs={12}
+              sm={12}
+              md={5}
+              sx={{
+                display: "flex",
+                justifyContent: { xs: "flex-start", md: "flex-end" },
+              }}
             >
-              Register Found Item
-            </Button>
-          </Grid>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                onClick={handleAddItem}
+              >
+                Register Found Item
+              </Button>
+            </Grid>
+          )}
         </Grid>
       </Paper>
 
-      {/* Items Table */}
-      <TableContainer component={Paper}>
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
-            <CircularProgress />
-          </Box>
-        ) : (
+      {/* Items Display */}
+      {loading ? (
+        <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
+          <CircularProgress />
+        </Box>
+      ) : isMobile ? (
+        <MobileItemList
+          items={paginatedItems}
+          onViewItem={handleViewItem}
+          onClaimItem={handleClaimItem}
+          showClaimButton={true}
+          isAdmin={isAdmin}
+          showImage={true}
+        />
+      ) : (
+        <TableContainer component={Paper}>
           <Table>
             <TableHead>
               <TableRow>
                 <TableCell>Item ID</TableCell>
                 <TableCell>Image</TableCell>
-                <TableCell>Item Name</TableCell>
+                <TableCell>Name</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Found Date</TableCell>
-                <TableCell>Found Location</TableCell>
-                <TableCell>Storage Location</TableCell>
+                <TableCell>Location</TableCell>
+                <TableCell>Date Found</TableCell>
+                <TableCell>Status</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -341,37 +380,27 @@ const FoundItemsPage: React.FC = () => {
               {paginatedItems.length > 0 ? (
                 paginatedItems.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell>{item.itemId || "N/A"}</TableCell>
+                    <TableCell>{item.itemId}</TableCell>
                     <TableCell>
-                      {item.imageUrl ? (
+                      <Box sx={{ 
+                        width: 125, 
+                        height: 125, 
+                        position: 'relative' 
+                      }}>
                         <ImageWithFallback
                           src={item.imageUrl}
                           alt={item.name}
-                          width={80}
-                          height={80}
-                          sx={{ 
-                            objectFit: 'cover', 
-                            borderRadius: 1,
+                          width="100%"
+                          height="100%"
+                          sx={{
+                            cursor: 'pointer',
+                            backgroundColor: '#f5f5f5',
                             border: '1px solid #eee',
-                            backgroundColor: '#f5f5f5'
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                           }}
+                          onClick={() => handleViewItem(item)}
                         />
-                      ) : (
-                        <Box 
-                          sx={{ 
-                            width: 80, 
-                            height: 80, 
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            bgcolor: '#f5f5f5',
-                            borderRadius: 1,
-                            border: '1px solid #eee'
-                          }}
-                        >
-                          <ImageNotSupportedIcon color="disabled" />
-                        </Box>
-                      )}
+                      </Box>
                     </TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>
@@ -379,29 +408,70 @@ const FoundItemsPage: React.FC = () => {
                         ? item.type.charAt(0).toUpperCase() + item.type.slice(1)
                         : "N/A"}
                     </TableCell>
-                    <TableCell>
-                      {item.foundDate ? formatDate(new Date(item.foundDate)) : 'N/A'}
-                    </TableCell>
                     <TableCell>{item.foundLocation || "N/A"}</TableCell>
-                    <TableCell>{item.storageLocation || "N/A"}</TableCell>
                     <TableCell>
-                      <IconButton
+                      {item.foundDate
+                        ? new Date(item.foundDate).toLocaleDateString()
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={formatToSentenceCase(item.status)}
+                        color={
+                          item.status === "lost"
+                            ? "error"
+                            : item.status === "in_custody"
+                            ? "info"
+                            : item.status === "claimed"
+                            ? "success"
+                            : "default"
+                        }
                         size="small"
-                        color="primary"
-                        onClick={() => handleViewItem(item)}
-                      >
-                        <ViewIcon />
-                      </IconButton>
-                      <IconButton size="small" color="secondary">
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="success"
-                        onClick={() => handleClaimItem(item)}
-                      >
-                        <ClaimIcon />
-                      </IconButton>
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Tooltip title="View Details">
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleViewItem(item)}
+                          >
+                            <ViewIcon />
+                          </IconButton>
+                        </Tooltip>
+                        <Tooltip title="Edit Item">
+                          <IconButton
+                            size="small"
+                            color="warning"
+                            onClick={() => handleEditItem(item)}
+                          >
+                            <EditIcon />
+                          </IconButton>
+                        </Tooltip>
+                        {isAdmin && (
+                          <>
+                            <Tooltip title="Process Claim">
+                              <IconButton
+                                size="small"
+                                color="success"
+                                onClick={() => handleClaimItem(item)}
+                              >
+                                <ClaimIcon />
+                              </IconButton>
+                            </Tooltip>
+                            <Tooltip title="Delete Item">
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleDeleteClick(item)}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </Tooltip>
+                          </>
+                        )}
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))
@@ -414,37 +484,67 @@ const FoundItemsPage: React.FC = () => {
               )}
             </TableBody>
           </Table>
-        )}
-        <TablePagination
-          rowsPerPageOptions={[5, 10, 25]}
-          component="div"
-          count={filteredItems.length}
-          rowsPerPage={rowsPerPage}
-          page={page}
-          onPageChange={handleChangePage}
-          onRowsPerPageChange={handleChangeRowsPerPage}
-        />
-      </TableContainer>
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25]}
+            component="div"
+            count={filteredItems.length}
+            rowsPerPage={rowsPerPage}
+            page={page}
+            onPageChange={handleChangePage}
+            onRowsPerPageChange={handleChangeRowsPerPage}
+          />
+        </TableContainer>
+      )}
 
       {/* View Item Dialog */}
-      <Dialog open={!!viewItem} onClose={handleCloseViewDialog} maxWidth="sm" fullWidth>
+      <Dialog
+        open={!!viewItem}
+        onClose={handleCloseViewDialog}
+        maxWidth="sm"
+        fullWidth
+      >
         {viewItem && (
           <>
-            <DialogTitle>Found Item Details</DialogTitle>
+            <DialogTitle>Item Details</DialogTitle>
             <DialogContent>
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <Typography variant="subtitle2">Item ID</Typography>
-                  <Typography variant="body1">{viewItem.itemId || "N/A"}</Typography>
+                  <Typography variant="body1">
+                    {viewItem.itemId || "N/A"}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Item Name</Typography>
+                  <Typography variant="subtitle2">Name</Typography>
                   <Typography variant="body1">{viewItem.name}</Typography>
                 </Grid>
-                <Grid item xs={12}>
+                <Grid item xs={12} sm={6}>
                   <Typography variant="subtitle2">Type</Typography>
                   <Typography variant="body1">
-                    {viewItem.type ? (viewItem.type.charAt(0).toUpperCase() + viewItem.type.slice(1)) : "N/A"}
+                    {viewItem.type
+                      ? viewItem.type.charAt(0).toUpperCase() +
+                        viewItem.type.slice(1)
+                      : "N/A"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2">Location</Typography>
+                  <Typography variant="body1">
+                    {viewItem.foundLocation || "N/A"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2">Date Found</Typography>
+                  <Typography variant="body1">
+                    {viewItem.foundDate
+                      ? new Date(viewItem.foundDate).toLocaleDateString()
+                      : "N/A"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2">Status</Typography>
+                  <Typography variant="body1">
+                    {formatToSentenceCase(viewItem.status)}
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>
@@ -453,64 +553,24 @@ const FoundItemsPage: React.FC = () => {
                     {viewItem.description || "N/A"}
                   </Typography>
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Color</Typography>
-                  <Typography variant="body1">
-                    {viewItem.color || "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Brand</Typography>
-                  <Typography variant="body1">
-                    {viewItem.brand || "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Found Date</Typography>
-                  <Typography variant="body1">
-                    {formatDate(viewItem.foundDate)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Found Location</Typography>
-                  <Typography variant="body1">
-                    {viewItem.foundLocation || "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Storage Location</Typography>
-                  <Typography variant="body1">
-                    {viewItem.storageLocation || "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2">Found By</Typography>
-                  <Typography variant="body1">
-                    {viewItem.foundBy && typeof viewItem.foundBy === 'object' ? viewItem.foundBy.name || "Anonymous" : "Anonymous"}
-                    {viewItem.foundBy && typeof viewItem.foundBy === 'object' && viewItem.foundBy.type &&
-                      ` (${
-                        viewItem.foundBy.type.charAt(0).toUpperCase() +
-                        viewItem.foundBy.type.slice(1)
-                      })`}
-                  </Typography>
-                </Grid>
-                {viewItem.notes && (
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2">Additional Notes</Typography>
-                    <Typography variant="body1">{viewItem.notes}</Typography>
-                  </Grid>
-                )}
                 {viewItem.imageUrl && (
                   <Grid item xs={12}>
-                    <Typography variant="subtitle2">Image</Typography>
-                    <Box sx={{ mt: 1, textAlign: 'center', position: 'relative' }}>
+                    <Box sx={{ 
+                      mt: 1, 
+                      textAlign: 'center', 
+                      position: 'relative',
+                      backgroundColor: '#f5f5f5',
+                      borderRadius: 2,
+                      p: 2,
+                      boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
+                    }}>
                       <ImageWithFallback
                         src={viewItem.imageUrl}
                         alt={viewItem.name}
                         width="100%"
-                        height="300px"
+                        height="400px"
                         sx={{ 
-                          maxHeight: '350px', 
+                          maxHeight: '500px', 
                           objectFit: 'contain',
                           borderRadius: '8px',
                           boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
@@ -523,14 +583,6 @@ const FoundItemsPage: React.FC = () => {
             </DialogContent>
             <DialogActions>
               <Button onClick={handleCloseViewDialog}>Close</Button>
-              <Button 
-                variant="contained" 
-                color="primary" 
-                startIcon={<ClaimIcon />}
-                onClick={() => handleClaimItem(viewItem)}
-              >
-                Claim Item
-              </Button>
             </DialogActions>
           </>
         )}
@@ -545,132 +597,265 @@ const FoundItemsPage: React.FC = () => {
       >
         <DialogTitle>Register Found Item</DialogTitle>
         <DialogContent>
-          <ItemForm 
+          <ItemForm
             formType="found"
-            onSubmit={handleSubmitItem}
+            onSubmit={async (formData) => {
+              try {
+                // Add the foundBy information from the current user
+                const itemData = {
+                  ...formData,
+                  foundBy: {
+                    name: user?.name || '',
+                    type: (user?.role === 'admin' || user?.role === 'superAdmin' ? 'staff' : 'student') as 'student' | 'faculty' | 'staff' | 'visitor',
+                    email: user?.email || '',
+                  },
+                  status: 'in_custody',
+                  dateReported: new Date(),
+                  foundDate: formData.foundDate || new Date(),
+                  foundLocation: formData.foundLocation || '',
+                  storageLocation: formData.storageLocation || '',
+                };
+                
+                console.log('Submitting found item:', itemData); // Debug log
+                const result = await dispatch(addNewItem(itemData)).unwrap();
+                console.log('Item added successfully:', result); // Debug log
+                
+                // Refresh the list
+                await dispatch(fetchItemsByStatus('in_custody'));
+                handleCloseAddDialog();
+              } catch (error) {
+                console.error('Error adding found item:', error);
+                // You might want to show an error message to the user here
+              }
+            }}
             onCancel={handleCloseAddDialog}
-            initialData={{ status: "found" }}
           />
         </DialogContent>
       </Dialog>
 
-      {/* Claim Item Dialog */}
-      <Dialog 
-        open={openClaimDialog} 
-        onClose={handleCloseClaimDialog} 
-        maxWidth="sm" 
+      {/* Claim Dialog */}
+      <Dialog
+        open={openClaimDialog}
+        onClose={handleCloseClaimDialog}
+        maxWidth="sm"
         fullWidth
       >
-        <DialogTitle>Claim Item</DialogTitle>
+        <DialogTitle>Process Claim</DialogTitle>
         <DialogContent>
-          {viewItem && (
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle1" gutterBottom>
-                Item Details:
-              </Typography>
-              <Typography variant="body1" gutterBottom>
-                {viewItem.name} ({viewItem.itemId || 'No ID'})
-              </Typography>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Found on: {viewItem.foundDate ? formatDate(viewItem.foundDate) : 'N/A'}
-              </Typography>
-              
-              <Divider sx={{ my: 2 }} />
-              
-              <Typography variant="subtitle1" gutterBottom>
-                Claimant Information
-              </Typography>
-              
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    required
-                    label="Full Name"
-                    name="name"
-                    value={claimFormData.name}
-                    onChange={handleClaimFormChange}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <FormControl fullWidth required>
-                    <InputLabel>Type</InputLabel>
-                    <Select
-                      value={claimFormData.type}
-                      label="Type"
-                      onChange={handleClaimTypeChange}
-                    >
-                      <MenuItem value="student">Student</MenuItem>
-                      <MenuItem value="faculty">Faculty</MenuItem>
-                      <MenuItem value="staff">Staff</MenuItem>
-                      <MenuItem value="visitor">Visitor</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-                
-                {claimFormData.type === 'student' && (
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      required
-                      label="Student ID"
-                      name="studentId"
-                      value={claimFormData.studentId}
-                      onChange={handleClaimFormChange}
-                    />
-                  </Grid>
-                )}
-                
-                {(claimFormData.type === 'faculty' || claimFormData.type === 'staff') && (
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      required
-                      label="Employee ID"
-                      name="employeeId"
-                      value={claimFormData.employeeId}
-                      onChange={handleClaimFormChange}
-                    />
-                  </Grid>
-                )}
-                
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Email"
-                    name="email"
-                    type="email"
-                    value={claimFormData.email}
-                    onChange={handleClaimFormChange}
-                  />
-                </Grid>
-                
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Phone Number"
-                    name="phone"
-                    value={claimFormData.phone}
-                    onChange={handleClaimFormChange}
-                  />
-                </Grid>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Your Name"
+                value={claimFormData.name}
+                onChange={(e) =>
+                  setClaimFormData({ ...claimFormData, name: e.target.value })
+                }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Type</InputLabel>
+                <Select
+                  value={claimFormData.type}
+                  label="Type"
+                  onChange={(e) =>
+                    setClaimFormData({
+                      ...claimFormData,
+                      type: e.target.value as "student" | "faculty" | "staff" | "visitor",
+                    })
+                  }
+                >
+                  <MenuItem value="student">Student</MenuItem>
+                  <MenuItem value="faculty">Faculty</MenuItem>
+                  <MenuItem value="staff">Staff</MenuItem>
+                  <MenuItem value="visitor">Visitor</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            {claimFormData.type === "student" && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Student ID"
+                  value={claimFormData.studentId}
+                  onChange={(e) =>
+                    setClaimFormData({
+                      ...claimFormData,
+                      studentId: e.target.value,
+                    })
+                  }
+                />
               </Grid>
-            </Box>
-          )}
+            )}
+            {(claimFormData.type === "faculty" ||
+              claimFormData.type === "staff") && (
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Employee ID"
+                  value={claimFormData.employeeId}
+                  onChange={(e) =>
+                    setClaimFormData({
+                      ...claimFormData,
+                      employeeId: e.target.value,
+                    })
+                  }
+                />
+              </Grid>
+            )}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Email"
+                type="email"
+                value={claimFormData.email}
+                onChange={(e) =>
+                  setClaimFormData({ ...claimFormData, email: e.target.value })
+                }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Phone"
+                value={claimFormData.phone}
+                onChange={(e) =>
+                  setClaimFormData({ ...claimFormData, phone: e.target.value })
+                }
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Date of Claim"
+                type="date"
+                value={claimFormData.claimDate}
+                onChange={(e) =>
+                  setClaimFormData({ ...claimFormData, claimDate: e.target.value })
+                }
+                InputLabelProps={{
+                  shrink: true,
+                }}
+              />
+            </Grid>
+          </Grid>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleCloseClaimDialog}>Cancel</Button>
-          <Button 
-            variant="contained" 
-            color="primary" 
-            onClick={handleSubmitClaim}
-            disabled={!claimFormData.name || 
-              (claimFormData.type === 'student' && !claimFormData.studentId) ||
-              ((claimFormData.type === 'faculty' || claimFormData.type === 'staff') && !claimFormData.employeeId)
-            }
-          >
+          <Button onClick={handleClaimSubmit} variant="contained">
             Submit Claim
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1,
+          color: 'error.main',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          pb: 2,
+          typography: 'h6'
+        }}>
+          <WarningIcon color="error" />
+          Confirm Deletion
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="h6" color="text.primary" gutterBottom>
+              Are you sure you want to delete this item?
+            </Typography>
+            <Box sx={{ 
+              bgcolor: 'error.main', 
+              p: 2, 
+              borderRadius: 1,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 1
+            }}>
+              <WarningIcon sx={{ color: 'white', mt: 0.5 }} />
+              <Typography variant="body1" sx={{ color: 'white' }}>
+                This action cannot be undone. The item will be moved to the Deleted Items tab for record-keeping purposes.
+              </Typography>
+            </Box>
+            <Box sx={{ 
+              bgcolor: 'background.paper', 
+              p: 2, 
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <Typography variant="subtitle1" color="text.primary" gutterBottom sx={{ fontWeight: 500 }}>
+                Item Details:
+              </Typography>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body1">
+                  <strong>Name:</strong> {itemToDelete?.name}
+                </Typography>
+                <Typography variant="body1">
+                  <strong>ID:</strong> {itemToDelete?.itemId}
+                </Typography>
+                <Typography variant="body1">
+                  <strong>Type:</strong> {itemToDelete?.type ? itemToDelete.type.charAt(0).toUpperCase() + itemToDelete.type.slice(1) : 'N/A'}
+                </Typography>
+                <Typography variant="body1">
+                  <strong>Status:</strong> {itemToDelete?.status ? itemToDelete.status.charAt(0).toUpperCase() + itemToDelete.status.slice(1) : 'N/A'}
+                </Typography>
+                <Typography variant="body1">
+                  <strong>Date Found:</strong> {itemToDelete?.foundDate ? new Date(itemToDelete.foundDate).toLocaleDateString() : 'N/A'}
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ 
+          px: 3, 
+          py: 2, 
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          gap: 1
+        }}>
+          <Button 
+            onClick={handleDeleteCancel} 
+            variant="outlined"
+            sx={{ 
+              minWidth: 100,
+              '&:hover': {
+                bgcolor: 'action.hover'
+              }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm} 
+            color="error" 
+            variant="contained"
+            startIcon={<DeleteIcon />}
+            sx={{ 
+              minWidth: 100,
+              '&:hover': {
+                bgcolor: 'error.dark'
+              }
+            }}
+          >
+            Delete
           </Button>
         </DialogActions>
       </Dialog>

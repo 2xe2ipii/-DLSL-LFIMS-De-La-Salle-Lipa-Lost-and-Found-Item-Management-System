@@ -34,6 +34,7 @@ import {
   CheckCircle as FoundIcon,
   AssignmentReturn as ClaimedIcon,
   CardGiftcard as DonatedIcon,
+  Delete as DeletedIcon,
 } from "@mui/icons-material";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAppSelector, useAppDispatch } from "../../hooks/useRedux";
@@ -128,8 +129,16 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   };
 
   const handleLogout = () => {
+    // Store the role before logging out
+    const userRole = user?.role;
+    localStorage.setItem('lastUserRole', userRole || '');
+    
     dispatch(logout());
-    navigate("/login");
+    if (userRole === 'admin' || userRole === 'superAdmin') {
+      navigate("/admin-login");
+    } else {
+      navigate("/");
+    }
     handleProfileMenuClose();
   };
 
@@ -139,6 +148,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   // Safe check for superAdmin role
   const isSuperAdmin = user?.role === 'superAdmin';
+  const isAdmin = user?.role === 'admin' || isSuperAdmin;
+
   console.log(`MainLayout: User role: ${user?.role}, isSuperAdmin: ${isSuperAdmin}`);
 
   const menuItems = [
@@ -148,8 +159,8 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
       icon: <InventoryIcon />,
       path: "/items",
       submenu: [
-        { text: "Lost Items", icon: <LostIcon />, path: "/items/lost" },
-        { text: "Found Items", icon: <FoundIcon />, path: "/items/found" },
+        { text: "Missing Items", icon: <LostIcon />, path: "/items/lost" },
+        { text: "In Custody", icon: <FoundIcon />, path: "/items/found" },
         {
           text: "Claimed Items",
           icon: <ClaimedIcon />,
@@ -160,10 +171,19 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
           icon: <DonatedIcon />,
           path: "/items/donation",
         },
+        // Only show Deleted Items for admin users
+        ...(isAdmin ? [{
+          text: "Deleted Items",
+          icon: <DeletedIcon />,
+          path: "/deleted-items",
+        }] : []),
       ],
     },
+    // Only show Reports and Settings for admin users
+    ...(isAdmin ? [
     { text: "Reports", icon: <AssessmentIcon />, path: "/reports" },
     { text: "Settings", icon: <SettingsIcon />, path: "/settings" },
+    ] : []),
     // Only show User Management for superAdmin
     ...(isSuperAdmin ? [
       { text: "User Management", icon: <PersonIcon />, path: "/admin/users" }

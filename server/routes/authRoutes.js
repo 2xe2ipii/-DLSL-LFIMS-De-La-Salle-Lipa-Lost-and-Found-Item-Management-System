@@ -13,6 +13,9 @@ router.post('/login', authController.login);
 // Get current user (protected route)
 router.get('/me', authMiddleware, authController.getCurrentUser);
 
+// Change password (protected route)
+router.post('/change-password', authMiddleware, authController.changePassword);
+
 // Create admin user (superadmin only)
 router.post('/create-user', authMiddleware, adminMiddleware, authController.createUser);
 

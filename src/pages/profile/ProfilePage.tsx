@@ -15,14 +15,19 @@ import {
   Snackbar,
   Alert,
   SelectChangeEvent,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress,
 } from "@mui/material";
 import { useAppSelector, useAppDispatch } from "../../hooks/useRedux";
-import { updateUserProfile } from "../../store/slices/authSlice";
+import { updateUserProfile, changePassword } from "../../store/slices/authSlice";
 import { User, UserRole } from "../../types/user";
 
 const ProfilePage: React.FC = () => {
   const dispatch = useAppDispatch();
-  const { user } = useAppSelector((state) => state.auth);
+  const { user, loading, error } = useAppSelector((state) => state.auth);
 
   const [editMode, setEditMode] = useState(false);
   const [profileData, setProfileData] = useState<Partial<User>>(
@@ -30,12 +35,19 @@ const ProfilePage: React.FC = () => {
       username: "",
       email: "",
       name: "",
-      role: "admin",
+      role: "viewer",
       department: "",
     }
   );
   const [successMessage, setSuccessMessage] = useState("");
   const [showAlert, setShowAlert] = useState(false);
+  const [alertSeverity, setAlertSeverity] = useState<'success' | 'error'>('success');
+  const [openPasswordDialog, setOpenPasswordDialog] = useState(false);
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -66,14 +78,59 @@ const ProfilePage: React.FC = () => {
     setShowAlert(false);
   };
 
+  const handleOpenPasswordDialog = () => {
+    setOpenPasswordDialog(true);
+  };
+
+  const handleClosePasswordDialog = () => {
+    setOpenPasswordDialog(false);
+    setPasswordData({
+      currentPassword: "",
+      newPassword: "",
+      confirmPassword: "",
+    });
+  };
+
+  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setPasswordData({ ...passwordData, [name]: value });
+  };
+
+  const handleSubmitPasswordChange = async () => {
+    // Validate passwords
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      setSuccessMessage("New passwords do not match!");
+      setAlertSeverity('error');
+      setShowAlert(true);
+      return;
+    }
+
+    try {
+      const result = await dispatch(changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword
+      })).unwrap();
+      
+      handleClosePasswordDialog();
+      setSuccessMessage("Password changed successfully!");
+      setAlertSeverity('success');
+      setShowAlert(true);
+    } catch (error: any) {
+      console.error('Password change error:', error);
+      setSuccessMessage(error.message || "Failed to change password. Please check your current password.");
+      setAlertSeverity('error');
+      setShowAlert(true);
+    }
+  };
+
   // For demo purposes, ensure we have data
   const displayData = user || {
     id: "user-1",
-    username: "admin",
-    email: "admin@dlsl.edu.ph",
-    name: "Admin User",
-    role: "admin" as UserRole,
-    department: "SDFO",
+    username: "viewer",
+    email: "viewer@dlsl.edu.ph",
+    name: "Viewer User",
+    role: "viewer" as UserRole,
+    department: "Student",
     createdAt: new Date(),
     lastLogin: new Date(),
   };
@@ -186,24 +243,6 @@ const ProfilePage: React.FC = () => {
                   disabled={!editMode}
                 />
               </Grid>
-              {displayData.role === "superAdmin" && editMode && (
-                <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth>
-                    <InputLabel>Role</InputLabel>
-                    <Select
-                      value={profileData.role || displayData.role}
-                      label="Role"
-                      name="role"
-                      onChange={handleRoleChange}
-                      disabled={!editMode}
-                    >
-                      <MenuItem value="admin">Admin</MenuItem>
-                      <MenuItem value="superAdmin">Super Admin</MenuItem>
-                      <MenuItem value="viewer">Viewer</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
-              )}
             </Grid>
 
             {editMode && (
@@ -228,7 +267,7 @@ const ProfilePage: React.FC = () => {
               variant="outlined"
               color="primary"
               sx={{ mt: 1 }}
-              disabled={!editMode}
+              onClick={handleOpenPasswordDialog}
             >
               Change Password
             </Button>
@@ -240,15 +279,73 @@ const ProfilePage: React.FC = () => {
         open={showAlert}
         autoHideDuration={6000}
         onClose={handleCloseAlert}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
         <Alert
           onClose={handleCloseAlert}
-          severity="success"
+          severity={alertSeverity}
           sx={{ width: "100%" }}
         >
           {successMessage}
         </Alert>
       </Snackbar>
+
+      {/* Password Change Dialog */}
+      <Dialog
+        open={openPasswordDialog}
+        onClose={handleClosePasswordDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Change Password</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <TextField
+              fullWidth
+              label="Current Password"
+              name="currentPassword"
+              type="password"
+              value={passwordData.currentPassword}
+              onChange={handlePasswordChange}
+              margin="normal"
+              required
+              error={!!error}
+              helperText={error}
+            />
+            <TextField
+              fullWidth
+              label="New Password"
+              name="newPassword"
+              type="password"
+              value={passwordData.newPassword}
+              onChange={handlePasswordChange}
+              margin="normal"
+              required
+            />
+            <TextField
+              fullWidth
+              label="Confirm New Password"
+              name="confirmPassword"
+              type="password"
+              value={passwordData.confirmPassword}
+              onChange={handlePasswordChange}
+              margin="normal"
+              required
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleClosePasswordDialog}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleSubmitPasswordChange}
+            disabled={loading}
+          >
+            {loading ? <CircularProgress size={24} /> : "Change Password"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

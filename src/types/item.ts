@@ -1,5 +1,5 @@
 export type ItemType = 'book' | 'electronics' | 'clothing' | 'accessory' | 'document' | 'stationery' | 'jewelry' | 'bag' | 'id_card' | 'key' | 'wallet' | 'money' | 'other';
-export type ItemStatus = 'lost' | 'found' | 'claimed' | 'donated';
+export type ItemStatus = 'missing' | 'in_custody' | 'claimed' | 'donated' | 'deleted';
 
 export interface Person {
   id?: string;
@@ -24,6 +24,7 @@ export interface Item {
   dateReported?: string | Date;
   dateFound?: string | Date;
   foundDate?: string | Date;
+  lostDate?: string | Date;
   reportedBy?: Person | string;
   foundBy?: Person | string;
   claimedBy?: Person | string;
@@ -51,4 +52,5 @@ export interface Item {
   contactPerson?: string;
   contactEmail?: string;
   contactPhone?: string;
+  deletedAt?: Date;
 } 

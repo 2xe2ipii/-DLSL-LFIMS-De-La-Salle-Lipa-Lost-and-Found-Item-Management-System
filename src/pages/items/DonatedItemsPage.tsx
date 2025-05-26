@@ -32,9 +32,11 @@ import {
   Visibility as ViewIcon,
   Print as PrintIcon,
   ImageNotSupported as ImageNotSupportedIcon,
+  Edit as EditIcon,
 } from "@mui/icons-material";
 import { useAppSelector, useAppDispatch } from "../../hooks/useRedux";
 import { Item, ItemType } from "../../types/item";
+import { UserRole } from "../../types/user";
 import { fetchItemsByStatus, clearError } from "../../store/slices/itemsSlice";
 import uploadService from "../../services/uploadService";
 import ImageWithFallback from "../../components/common/ImageWithFallback";
@@ -42,6 +44,10 @@ import ImageWithFallback from "../../components/common/ImageWithFallback";
 const DonatedItemsPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { items, loading, error } = useAppSelector((state) => state.items);
+  const { user } = useAppSelector((state) => state.auth);
+
+  // Check if user is admin or superAdmin
+  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin';
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -209,83 +215,57 @@ const DonatedItemsPage: React.FC = () => {
                   <TableRow key={item.id}>
                     <TableCell>{item.itemId || "N/A"}</TableCell>
                     <TableCell>
-                      {item.imageUrl ? (
+                      <Box sx={{ 
+                        width: 125, 
+                        height: 125, 
+                        position: 'relative' 
+                      }}>
                         <ImageWithFallback
                           src={item.imageUrl}
                           alt={item.name}
-                          width={80}
-                          height={80}
+                          width="100%"
+                          height="100%"
                           sx={{
-                            objectFit: 'cover',
-                            borderRadius: 1,
                             cursor: 'pointer',
                             backgroundColor: '#f5f5f5',
-                            border: '1px solid #eee'
+                            border: '1px solid #eee',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                           }}
                           onClick={() => handleViewItem(item)}
                         />
-                      ) : (
-                        <Box
-                          sx={{
-                            width: 80,
-                            height: 80,
-                            bgcolor: 'grey.200',
-                            borderRadius: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            border: '1px solid #ddd'
-                          }}
-                          onClick={() => handleViewItem(item)}
-                        >
-                          <ImageNotSupportedIcon />
-                        </Box>
-                      )}
+                      </Box>
                     </TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>
-                      <Chip
-                        label={
-                          item.type.charAt(0).toUpperCase() + item.type.slice(1)
-                        }
-                        size="small"
-                        color={
-                          item.type === "electronics"
-                            ? "primary"
-                            : item.type === "book"
-                            ? "secondary"
-                            : item.type === "clothing"
-                            ? "success"
-                            : item.type === "accessory"
-                            ? "warning"
-                            : "default"
-                        }
-                      />
+                      {item.type
+                        ? item.type.charAt(0).toUpperCase() + item.type.slice(1)
+                        : "N/A"}
                     </TableCell>
-                    <TableCell>
-                      {item.foundDate ? formatDate(new Date(item.foundDate)) : "N/A"}
-                    </TableCell>
+                    <TableCell>{item.foundDate ? formatDate(new Date(item.foundDate)) : "N/A"}</TableCell>
                     <TableCell>
                       {/* For simplicity's sake, we're using the modification date as donation date */}
                       {formatDate(new Date())}
                     </TableCell>
                     <TableCell>{item.foundLocation || "N/A"}</TableCell>
                     <TableCell>
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        onClick={() => handleViewItem(item)}
-                      >
-                        <ViewIcon />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        color="secondary"
-                        onClick={() => handlePrintDonationCertificate(item)}
-                      >
-                        <PrintIcon />
-                      </IconButton>
+                      {isAdmin && (
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <IconButton
+                            size="small"
+                            color="primary"
+                            onClick={() => handleViewItem(item)}
+                          >
+                            <ViewIcon />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            color="secondary"
+                            onClick={() => handlePrintDonationCertificate(item)}
+                          >
+                            <PrintIcon />
+                          </IconButton>
+                        </Box>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))

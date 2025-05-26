@@ -53,7 +53,7 @@ const createTestItems = async () => {
       color: 'Blue',
       brand: 'McGraw-Hill',
       dateReported: new Date(),
-      status: 'lost',
+      status: 'missing',
       location: 'Main Library',
       imageUrl: '/uploads/2023/10/test-image.png',
       reportedBy: testReporter._id
@@ -76,7 +76,7 @@ const createTestItems = async () => {
       color: 'Black',
       brand: 'Samsung',
       dateReported: new Date(),
-      status: 'found',
+      status: 'in_custody',
       foundLocation: 'Cafeteria',
       storageLocation: 'Security Office',
       foundDate: new Date(),

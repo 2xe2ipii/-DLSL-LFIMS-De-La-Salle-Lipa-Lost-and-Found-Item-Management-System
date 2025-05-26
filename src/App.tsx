@@ -10,6 +10,7 @@ import CssBaseline from "@mui/material/CssBaseline";
 
 import MainLayout from "./components/layout/MainLayout";
 import LoginPage from "./pages/auth/LoginPage";
+import RoleSelectionPage from "./pages/auth/RoleSelectionPage";
 import DashboardPage from "./pages/dashboard/DashboardPage";
 import LostItemsPage from "./pages/items/LostItemsPage";
 import FoundItemsPage from "./pages/items/FoundItemsPage";
@@ -23,6 +24,7 @@ import { UserRole } from './types/user';
 import AccessDeniedPage from './pages/AccessDeniedPage';
 import UserManagementPage from './pages/admin/UserManagementPage';
 import RoleBasedRoute from './components/RoleBasedRoute';
+import DeletedItemsPage from './pages/items/DeletedItemsPage';
 
 // Create a theme
 const theme = createTheme({
@@ -55,11 +57,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
 // App with routes
 const AppRoutes = () => {
+  const { user } = useAppSelector((state) => state.auth);
+
   return (
     <Router>
       <Routes>
+        <Route path="/" element={<RoleSelectionPage />} />
         <Route path="/login" element={<LoginPage />} />
 
+        {/* Dashboard Route - Accessible by all authenticated users */}
         <Route
           path="/dashboard"
           element={
@@ -71,6 +77,7 @@ const AppRoutes = () => {
           }
         />
 
+        {/* Items Routes - Accessible by all authenticated users */}
         <Route
           path="/items/lost"
           element={
@@ -81,7 +88,6 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/items/found"
           element={
@@ -92,7 +98,6 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/items/claimed"
           element={
@@ -103,7 +108,6 @@ const AppRoutes = () => {
             </ProtectedRoute>
           }
         />
-
         <Route
           path="/items/donation"
           element={
@@ -115,28 +119,27 @@ const AppRoutes = () => {
           }
         />
 
+        {/* Admin-only Routes */}
         <Route
           path="/reports"
           element={
-            <ProtectedRoute>
+            <RoleBasedRoute allowedRoles={['admin', 'superAdmin'] as UserRole[]}>
               <MainLayout>
                 <ReportsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleBasedRoute>
           }
         />
-
         <Route
           path="/settings"
           element={
-            <ProtectedRoute>
+            <RoleBasedRoute allowedRoles={['admin', 'superAdmin'] as UserRole[]}>
               <MainLayout>
                 <SettingsPage />
               </MainLayout>
-            </ProtectedRoute>
+            </RoleBasedRoute>
           }
         />
-
         <Route
           path="/profile"
           element={
@@ -148,19 +151,32 @@ const AppRoutes = () => {
           }
         />
 
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
-
-        {/* Admin Routes */}
-        <Route path="/admin/users" element={
+        {/* SuperAdmin-only Routes */}
+        <Route
+          path="/admin/users"
+          element={
           <RoleBasedRoute allowedRoles={['superAdmin'] as UserRole[]}>
             <MainLayout>
               <UserManagementPage />
             </MainLayout>
           </RoleBasedRoute>
-        } />
+          }
+        />
 
         {/* Access Denied Page */}
         <Route path="/access-denied" element={<AccessDeniedPage />} />
+
+        {/* Admin-only Routes */}
+        <Route
+          path="/deleted-items"
+          element={
+            <RoleBasedRoute allowedRoles={['admin', 'superAdmin'] as UserRole[]}>
+              <MainLayout>
+                <DeletedItemsPage />
+              </MainLayout>
+            </RoleBasedRoute>
+          }
+        />
       </Routes>
     </Router>
   );

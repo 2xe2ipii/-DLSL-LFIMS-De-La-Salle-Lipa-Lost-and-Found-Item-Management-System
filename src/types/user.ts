@@ -1,4 +1,4 @@
-export type UserRole = 'superAdmin' | 'admin' | 'student' | 'faculty';
+export type UserRole = 'superAdmin' | 'admin' | 'viewer';
 
 export interface User {
   id: string;
@@ -10,4 +10,6 @@ export interface User {
   department?: string;
   createdAt: Date;
   lastLogin?: Date;
+  loginAttempts?: number;
+  lockUntil?: Date;
 } 

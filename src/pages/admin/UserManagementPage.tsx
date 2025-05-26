@@ -46,13 +46,21 @@ const UserManagementPage: React.FC = () => {
     }
   }, [user, isAuthenticated, dispatch, navigate]);
 
-  const [users, setUsers] = useState<User[]>([]);
+  const [adminUsers, setAdminUsers] = useState<User[]>([]);
+  const [viewerUsers, setViewerUsers] = useState<User[]>([]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [newUser, setNewUser] = useState({
+  const [newUser, setNewUser] = useState<{
+    username: string;
+    email: string;
+    password: string;
+    name: string;
+    role: 'admin' | 'viewer' | '';
+  }>({
     username: '',
     email: '',
     password: '',
-    name: ''
+    name: '',
+    role: ''
   });
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,11 +81,10 @@ const UserManagementPage: React.FC = () => {
   const fetchUsers = async () => {
     setLoadingUsers(true);
     try {
-      // Use authService for better type safety and error handling
       const adminUsers = await authService.getAdminUsers();
-      setUsers(adminUsers);
+      setAdminUsers(adminUsers.filter(user => user.role === 'admin'));
+      setViewerUsers(adminUsers.filter(user => user.role === 'viewer'));
       
-      // If we've made it here, reset any previous error
       if (notification.severity === 'error') {
         setNotification({
           open: false,
@@ -99,7 +106,8 @@ const UserManagementPage: React.FC = () => {
     }
   };
 
-  const handleCreateDialogOpen = () => {
+  const handleCreateDialogOpen = (role: 'admin' | 'viewer') => {
+    setNewUser(prev => ({ ...prev, role }));
     setCreateDialogOpen(true);
   };
 
@@ -109,7 +117,8 @@ const UserManagementPage: React.FC = () => {
       username: '',
       email: '',
       password: '',
-      name: ''
+      name: '',
+      role: ''
     });
   };
 
@@ -125,10 +134,20 @@ const UserManagementPage: React.FC = () => {
       setIsSubmitting(true);
       
       // Validation checks
-      if (!newUser.username || !newUser.email || !newUser.password || !newUser.name) {
+      if (!newUser.username || !newUser.email || !newUser.password || !newUser.name || !newUser.role) {
         setNotification({
           open: true,
           message: 'All fields are required',
+          severity: 'error'
+        });
+        return;
+      }
+
+      // Ensure role is either 'admin' or 'viewer'
+      if (newUser.role !== 'admin' && newUser.role !== 'viewer') {
+        setNotification({
+          open: true,
+          message: 'Invalid role selected',
           severity: 'error'
         });
         return;
@@ -155,17 +174,18 @@ const UserManagementPage: React.FC = () => {
         return;
       }
 
-      // Use authService to create admin user
+      // Use authService to create user with specified role
       await authService.createAdminUser({
         username: newUser.username,
         email: newUser.email,
         password: newUser.password,
-        name: newUser.name
+        name: newUser.name,
+        role: newUser.role // Ensure the role is passed correctly
       });
 
       setNotification({
         open: true,
-        message: 'Admin user created successfully!',
+        message: 'User created successfully!',
         severity: 'success'
       });
       
@@ -230,12 +250,20 @@ const UserManagementPage: React.FC = () => {
         <Box>
           <Button
             variant="contained"
-            color="primary"
+            color="success"
             startIcon={<AddIcon />}
-            onClick={handleCreateDialogOpen}
+            onClick={() => handleCreateDialogOpen('admin')}
             sx={{ mr: 2 }}
           >
-            Create Admin User
+            Create Admin
+          </Button>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<AddIcon />}
+            onClick={() => handleCreateDialogOpen('viewer')}
+          >
+            Create Viewer
           </Button>
         </Box>
         
@@ -262,8 +290,11 @@ const UserManagementPage: React.FC = () => {
         </Box>
       </Box>
 
-      {/* User Table */}
-      <TableContainer component={Paper}>
+      {/* Admin Users Table */}
+      <Typography variant="h6" gutterBottom>
+        Admin Users
+      </Typography>
+      <TableContainer component={Paper} sx={{ mb: 3 }}>
         {loadingUsers ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
@@ -281,8 +312,8 @@ const UserManagementPage: React.FC = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {users.length > 0 ? (
-                users.map((user) => (
+              {adminUsers.length > 0 ? (
+                adminUsers.map((user) => (
                   <TableRow key={user.id}>
                     <TableCell>{user.name}</TableCell>
                     <TableCell>{user.username}</TableCell>
@@ -314,9 +345,64 @@ const UserManagementPage: React.FC = () => {
         )}
       </TableContainer>
 
+      {/* Viewer Users Table */}
+      <Typography variant="h6" gutterBottom>
+        Viewer Users
+      </Typography>
+      <TableContainer component={Paper}>
+        {loadingUsers ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Name</TableCell>
+                <TableCell>Username</TableCell>
+                <TableCell>Email</TableCell>
+                <TableCell>Role</TableCell>
+                <TableCell>Created At</TableCell>
+                <TableCell>Last Login</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {viewerUsers.length > 0 ? (
+                viewerUsers.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>{user.name}</TableCell>
+                    <TableCell>{user.username}</TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <Chip
+                        label={user.role}
+                        color="primary"
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      {new Date(user.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : 'Never'}
+                    </TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={6} align="center">
+                    No viewer users found
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        )}
+      </TableContainer>
+
       {/* Create User Dialog */}
       <Dialog open={createDialogOpen} onClose={handleCreateDialogClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Create New Admin User</DialogTitle>
+        <DialogTitle>Create New {newUser.role === 'admin' ? 'Admin' : 'Viewer'} User</DialogTitle>
         <DialogContent>
           <Box sx={{ pt: 2 }}>
             <TextField
@@ -334,21 +420,10 @@ const UserManagementPage: React.FC = () => {
             <TextField
               margin="dense"
               name="email"
-              label="Email Address"
+              label="Email"
               type="email"
               fullWidth
               value={newUser.email}
-              onChange={handleInputChange}
-              sx={{ mb: 2 }}
-              required
-            />
-            <TextField
-              margin="dense"
-              name="name"
-              label="Full Name"
-              type="text"
-              fullWidth
-              value={newUser.name}
               onChange={handleInputChange}
               sx={{ mb: 2 }}
               required
@@ -364,6 +439,17 @@ const UserManagementPage: React.FC = () => {
               helperText="Password must be at least 6 characters long"
               required
             />
+            <TextField
+              margin="dense"
+              name="name"
+              label="Name"
+              type="text"
+              fullWidth
+              value={newUser.name}
+              onChange={handleInputChange}
+              sx={{ mb: 2 }}
+              required
+            />
           </Box>
         </DialogContent>
         <DialogActions>
@@ -371,10 +457,10 @@ const UserManagementPage: React.FC = () => {
           <Button 
             onClick={handleCreateUser} 
             variant="contained" 
-            color="primary"
+            color={newUser.role === 'admin' ? 'success' : 'primary'}
             disabled={isSubmitting || !newUser.username || !newUser.email || !newUser.password || !newUser.name}
           >
-            {isSubmitting ? <CircularProgress size={24} /> : 'Create User'}
+            {isSubmitting ? <CircularProgress size={24} /> : `Create ${newUser.role === 'admin' ? 'Admin' : 'Viewer'}`}
           </Button>
         </DialogActions>
       </Dialog>

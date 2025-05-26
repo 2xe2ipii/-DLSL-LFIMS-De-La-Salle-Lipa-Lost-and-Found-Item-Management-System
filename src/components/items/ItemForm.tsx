@@ -202,40 +202,56 @@ const ItemForm: React.FC<ItemFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    // Validate required fields
+    if (!item.name || !item.type || !item.description || !item.location) {
+      setUploadError("Please fill in all required fields");
+      return;
+    }
+
+    // Validate reporter information
+    if (!reporter.name || !reporter.email || !reporter.phone) {
+      setUploadError("Please provide your contact information");
+      return;
+    }
+
+    // Map the form type to the correct status
+    const status = formType === 'lost' ? 'missing' : 'in_custody';
+
     // Prepare the complete item object to submit
     const completeItem: Partial<Item> = {
       ...item,
-      reportedBy: reporter.name ? reporter : undefined,
-      // For found items, the person who reports it (reporter) is also considered the finder
-      foundBy: formType === "found" && reporter.name ? reporter : undefined,
+      reportedBy: reporter,
+      status: status,
+      dateReported: new Date(),
+      lostDate: formType === 'lost' ? item.lostDate || new Date() : undefined,
+      foundDate: formType === 'found' ? item.foundDate || new Date() : undefined,
+      foundLocation: formType === 'found' ? item.foundLocation : undefined,
+      storageLocation: formType === 'found' ? item.storageLocation : undefined,
+      location: formType === 'lost' ? item.location : undefined,
+      type: item.type || 'other', // Ensure type is always set
+      description: item.description || '', // Ensure description is always set
+      name: item.name || '', // Ensure name is always set
     };
 
+    console.log('Submitting item with data:', completeItem); // Debug log
     onSubmit(completeItem);
   };
 
   return (
     <LocalizationProvider dateAdapter={AdapterDateFns}>
       <Box component="form" onSubmit={handleSubmit} sx={{ mt: 2 }}>
+        {uploadError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {uploadError}
+          </Alert>
+        )}
+
         {/* Item Details Section */}
         <Typography variant="h6" gutterBottom>
           Item Details
         </Typography>
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2}>
-            {initialData?.itemId && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Item ID"
-                  name="itemId"
-                  value={initialData.itemId}
-                  InputProps={{
-                    readOnly: true,
-                  }}
-                  variant="filled"
-                />
-              </Grid>
-            )}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
@@ -245,16 +261,18 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 value={item.name || ""}
                 onChange={handleItemChange}
                 placeholder="Enter a descriptive name for the item"
+                error={!item.name}
+                helperText={!item.name ? "Item name is required" : ""}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <FormControl fullWidth required error={!item.type}>
                 <InputLabel>Item Type</InputLabel>
                 <Select
                   name="type"
-                  value={item.type || "book"}
-                  label="Item Type"
+                  value={item.type || ""}
                   onChange={handleSelectChange}
+                  label="Item Type"
                 >
                   <MenuItem value="book">Book</MenuItem>
                   <MenuItem value="electronics">Electronics</MenuItem>
@@ -270,6 +288,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   <MenuItem value="money">Money</MenuItem>
                   <MenuItem value="other">Other</MenuItem>
                 </Select>
+                {!item.type && <Typography color="error" variant="caption">Item type is required</Typography>}
               </FormControl>
             </Grid>
             <Grid item xs={12}>
@@ -283,6 +302,8 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 value={item.description || ""}
                 onChange={handleItemChange}
                 placeholder="Provide a detailed description of the item"
+                error={!item.description}
+                helperText={!item.description ? "Description is required" : ""}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -292,6 +313,7 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 name="color"
                 value={item.color || ""}
                 onChange={handleItemChange}
+                placeholder="Item color"
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -301,133 +323,102 @@ const ItemForm: React.FC<ItemFormProps> = ({
                 name="brand"
                 value={item.brand || ""}
                 onChange={handleItemChange}
+                placeholder="Item brand"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                required
+                label="Lost Location"
+                name="location"
+                value={item.location || ""}
+                onChange={handleItemChange}
+                placeholder="Where did you lose the item?"
+                error={!item.location}
+                helperText={!item.location ? "Location is required" : ""}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <DatePicker
-                label="Date Reported"
-                value={item.dateReported ? (typeof item.dateReported === 'string' ? new Date(item.dateReported) : item.dateReported) : null}
-                onChange={handleDateReportedChange}
+                label="Date Lost"
+                value={item.lostDate ? new Date(item.lostDate) : null}
+                onChange={(date) => setItem({ ...item, lostDate: date || undefined })}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    required: true,
+                    error: !item.lostDate,
+                    helperText: !item.lostDate ? "Date lost is required" : ""
+                  }
+                }}
               />
             </Grid>
-
-            {/* Image Upload Section */}
             <Grid item xs={12}>
               <Box sx={{ mt: 2, mb: 2 }}>
                 <Typography variant="subtitle1" gutterBottom>
                   Item Image
                 </Typography>
-                {uploadError && (
-                  <Alert severity="error" sx={{ mb: 2 }}>
-                    {uploadError}
-                  </Alert>
-                )}
-                
-                {!previewImage && (
-                  <>
-                    <input
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      id="item-image-upload"
-                      type="file"
-                      onChange={handleImageUpload}
-                      ref={fileInputRef}
-                      disabled={isUploading}
-                    />
-                    <label htmlFor="item-image-upload">
-                      <Button
-                        variant="outlined"
-                        component="span"
-                        startIcon={isUploading ? <CircularProgress size={16} /> : <PhotoCamera />}
-                        disabled={isUploading}
+                <Box
+                  sx={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 2,
+                  }}
+                >
+                  {previewImage ? (
+                    <Box sx={{ position: "relative", width: "100%", maxWidth: 300 }}>
+                      <img
+                        src={previewImage}
+                        alt="Preview"
+                        style={{
+                          width: "100%",
+                          height: "auto",
+                          borderRadius: "8px",
+                        }}
+                      />
+                      <IconButton
+                        onClick={handleRemoveImage}
+                        sx={{
+                          position: "absolute",
+                          top: 8,
+                          right: 8,
+                          backgroundColor: "rgba(255, 255, 255, 0.8)",
+                          "&:hover": {
+                            backgroundColor: "rgba(255, 255, 255, 0.9)",
+                          },
+                        }}
                       >
-                        {isUploading ? 'Uploading...' : 'Upload Image'}
-                      </Button>
-                    </label>
-                  </>
-                )}
-
-                {previewImage && (
-                  <Box sx={{ mt: 2, position: 'relative', display: 'inline-block' }}>
-                    <img
-                      src={previewImage}
-                      alt="Item preview"
-                      style={{ maxWidth: '100%', maxHeight: '200px' }}
-                      onError={(e) => {
-                        e.currentTarget.src = '/placeholder-image.png';
-                        e.currentTarget.onerror = null;
-                      }}
-                    />
-                    <IconButton
-                      aria-label="delete image"
-                      size="small"
-                      sx={{
-                        position: 'absolute',
-                        top: 0,
-                        right: 0,
-                        bgcolor: 'rgba(255, 255, 255, 0.7)',
-                      }}
-                      onClick={handleRemoveImage}
+                        <DeleteIcon />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <Button
+                      variant="outlined"
+                      component="label"
+                      startIcon={<PhotoCamera />}
                       disabled={isUploading}
                     >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Box>
-                )}
+                      {isUploading ? "Uploading..." : "Upload Image"}
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        ref={fileInputRef}
+                      />
+                    </Button>
+                  )}
+                </Box>
               </Box>
             </Grid>
-
-            {formType === "lost" && (
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Last Seen Location"
-                  name="location"
-                  value={item.location || ""}
-                  onChange={handleItemChange}
-                  placeholder="Where was the item last seen?"
-                />
-              </Grid>
-            )}
-            {formType === "found" && (
-              <>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    required
-                    label="Found Location"
-                    name="foundLocation"
-                    value={item.foundLocation || ""}
-                    onChange={handleItemChange}
-                    placeholder="Where was the item found?"
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <DatePicker
-                    label="Date Found"
-                    value={item.foundDate ? (typeof item.foundDate === 'string' ? new Date(item.foundDate) : item.foundDate) : null}
-                    onChange={handleFoundDateChange}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    required
-                    label="Storage Location"
-                    name="storageLocation"
-                    value={item.storageLocation || ""}
-                    onChange={handleItemChange}
-                    placeholder="Where is the item stored?"
-                  />
-                </Grid>
-              </>
-            )}
           </Grid>
         </Paper>
 
         {/* Reporter Information Section */}
         <Typography variant="h6" gutterBottom>
-          {formType === "lost" ? "Reporter Information" : "Reported By (Finder)"}
+          Your Information
         </Typography>
         <Paper sx={{ p: 2, mb: 3 }}>
           <Grid container spacing={2}>
@@ -435,17 +426,19 @@ const ItemForm: React.FC<ItemFormProps> = ({
               <TextField
                 fullWidth
                 required
-                label="Name"
+                label="Your Name"
                 name="name"
                 value={reporter.name || ""}
                 onChange={handleReporterChange}
+                error={!reporter.name}
+                helperText={!reporter.name ? "Name is required" : ""}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <FormControl fullWidth required error={!reporter.type}>
                 <InputLabel>Type</InputLabel>
                 <Select
-                  value={reporter.type || "student"}
+                  value={reporter.type}
                   label="Type"
                   onChange={handleReporterTypeChange}
                 >
@@ -454,16 +447,20 @@ const ItemForm: React.FC<ItemFormProps> = ({
                   <MenuItem value="staff">Staff</MenuItem>
                   <MenuItem value="visitor">Visitor</MenuItem>
                 </Select>
+                {!reporter.type && <Typography color="error" variant="caption">Type is required</Typography>}
               </FormControl>
             </Grid>
             {reporter.type === "student" && (
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
+                  required
                   label="Student ID"
                   name="studentId"
                   value={reporter.studentId || ""}
                   onChange={handleReporterChange}
+                  error={!reporter.studentId}
+                  helperText={!reporter.studentId ? "Student ID is required" : ""}
                 />
               </Grid>
             )}
@@ -471,61 +468,56 @@ const ItemForm: React.FC<ItemFormProps> = ({
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
+                  required
                   label="Employee ID"
                   name="employeeId"
                   value={reporter.employeeId || ""}
                   onChange={handleReporterChange}
+                  error={!reporter.employeeId}
+                  helperText={!reporter.employeeId ? "Employee ID is required" : ""}
                 />
               </Grid>
             )}
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                required
                 label="Email"
                 name="email"
                 type="email"
                 value={reporter.email || ""}
                 onChange={handleReporterChange}
+                error={!reporter.email}
+                helperText={!reporter.email ? "Email is required" : ""}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
+                required
                 label="Phone"
                 name="phone"
                 value={reporter.phone || ""}
                 onChange={handleReporterChange}
+                error={!reporter.phone}
+                helperText={!reporter.phone ? "Phone is required" : ""}
               />
             </Grid>
           </Grid>
         </Paper>
 
-        {/* Notes Section */}
-        <Typography variant="h6" gutterBottom>
-          Additional Notes
-        </Typography>
-        <Paper sx={{ p: 2, mb: 3 }}>
-          <TextField
-            fullWidth
-            multiline
-            rows={4}
-            label="Notes"
-            name="notes"
-            value={item.notes || ""}
-            onChange={handleItemChange}
-            placeholder="Any additional information or special instructions"
-          />
-        </Paper>
-
         {/* Form Actions */}
-        <Box
-          sx={{ display: "flex", justifyContent: "flex-end", gap: 2, mt: 3 }}
-        >
+        <Box sx={{ display: "flex", justifyContent: "flex-end", gap: 2, mt: 3 }}>
           <Button variant="outlined" onClick={onCancel}>
             Cancel
           </Button>
-          <Button type="submit" variant="contained" color="primary">
-            {formType === "lost" ? "Report Lost Item" : "Log Found Item"}
+          <Button
+            type="submit"
+            variant="contained"
+            color="primary"
+            disabled={isUploading}
+          >
+            {isUploading ? "Submitting..." : "Report Lost Item"}
           </Button>
         </Box>
       </Box>

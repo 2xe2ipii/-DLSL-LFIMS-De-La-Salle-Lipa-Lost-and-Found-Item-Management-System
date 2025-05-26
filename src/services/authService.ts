@@ -37,13 +37,12 @@ export const authService = {
     email: string;
     password: string;
     name: string;
+    role: 'admin' | 'viewer';
   }): Promise<UserCreationResponse> => {
-    // Always set role to 'admin'
     const payload = {
       ...userData,
-      role: 'admin'
+      role: userData.role
     };
-    
     const response = await api.post('auth/create-user', payload);
     return response.data as UserCreationResponse;
   },

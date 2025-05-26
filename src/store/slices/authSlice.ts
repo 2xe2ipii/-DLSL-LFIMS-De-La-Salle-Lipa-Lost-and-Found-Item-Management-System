@@ -15,13 +15,13 @@ interface AuthState {
 // Async thunks
 export const login = createAsyncThunk<
   AuthResponse,
-  { username: string; password: string },
+  { username: string; password: string; role: 'superAdmin' | 'admin' | 'viewer' },
   { rejectValue: string }
 >(
   'auth/login',
-  async ({ username, password }, { rejectWithValue }) => {
+  async ({ username, password, role }, { rejectWithValue }) => {
     try {
-      const response = await api.post('/auth/login', { username, password });
+      const response = await api.post('/auth/login', { username, password, role });
       // Save token to localStorage
       const data = response.data as AuthResponse;
       localStorage.setItem('token', data.token);
@@ -34,7 +34,7 @@ export const login = createAsyncThunk<
 
 export const register = createAsyncThunk<
   AuthResponse,
-  { username: string; email: string; password: string; name: string; role: 'student' | 'faculty' },
+  { username: string; email: string; password: string; name: string; role: 'student' | 'faculty' | 'viewer' },
   { rejectValue: string }
 >(
   'auth/register',
@@ -53,7 +53,7 @@ export const register = createAsyncThunk<
 
 export const createUser = createAsyncThunk<
   UserResponse,
-  { username: string; email: string; password: string; name: string; role: 'admin' | 'superAdmin' },
+  { username: string; email: string; password: string; name: string; role: 'admin' | 'superAdmin' | 'viewer' },
   { rejectValue: string }
 >(
   'auth/createUser',
@@ -116,6 +116,26 @@ export const loadUser = createAsyncThunk<
     } catch (error: any) {
       console.error('Failed to load user:', error.response?.data || error);
       return rejectWithValue(error.response?.data?.message || 'Failed to load user');
+    }
+  }
+);
+
+export const changePassword = createAsyncThunk<
+  { message: string },
+  { currentPassword: string; newPassword: string },
+  { rejectValue: string }
+>(
+  'auth/changePassword',
+  async ({ currentPassword, newPassword }, { rejectWithValue }) => {
+    try {
+      const response = await api.post('/api/auth/change-password', {
+        currentPassword,
+        newPassword
+      });
+      return response.data as { message: string };
+    } catch (error: any) {
+      console.error('Password change error:', error.response?.data);
+      return rejectWithValue(error.response?.data?.message || 'Failed to change password');
     }
   }
 );
@@ -225,6 +245,18 @@ const authSlice = createSlice({
         state.user = null;
         state.token = null;
         state.isAuthenticated = false;
+      })
+      // Change Password
+      .addCase(changePassword.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(changePassword.fulfilled, (state) => {
+        state.loading = false;
+      })
+      .addCase(changePassword.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string;
       });
   },
 });

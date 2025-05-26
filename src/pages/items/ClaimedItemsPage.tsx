@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Box,
   Typography,
@@ -26,134 +26,42 @@ import {
   SelectChangeEvent,
   CircularProgress,
   Alert,
-  Input,
   InputAdornment,
-  Divider,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import {
   Search as SearchIcon,
   Visibility as ViewIcon,
   Print as PrintIcon,
-  ImageNotSupported as ImageNotSupportedIcon,
+  Delete as DeleteIcon,
+  Warning as WarningIcon,
 } from "@mui/icons-material";
 import { useAppSelector, useAppDispatch } from "../../hooks/useRedux";
-import { Item, ItemType, Person } from "../../types/item";
-import { fetchItemsByStatus, clearError } from "../../store/slices/itemsSlice";
-import { format } from "date-fns";
-import uploadService from "../../services/uploadService";
+import { Item } from "../../types/item";
+import { fetchItemsByStatus, clearError, changeItemStatusAPI } from "../../store/slices/itemsSlice";
+import { generateReport } from "../../services/reportService";
 import ImageWithFallback from "../../components/common/ImageWithFallback";
-
-// Update the ExtendedItem interface to include all necessary properties
-interface ExtendedItem extends Item {
-  claimDate?: string | Date;
-  claimedDate?: string | Date;
-  claimant?: string;
-  claimantId?: string;
-  claimantEmail?: string;
-  claimantPhone?: string;
-  claimantType?: string;
-  additionalData?: {
-    claimant?: string;
-    claimantId?: string;
-    claimantEmail?: string;
-    claimantPhone?: string;
-    claimantType?: string;
-    claimDate?: string | Date;
-  };
-}
-
-// Type guard to check if an object is a Person
-const isPersonObject = (obj: any): obj is Person => {
-  return obj && typeof obj === 'object' && (
-    'name' in obj || 
-    'studentId' in obj || 
-    'employeeId' in obj || 
-    'email' in obj || 
-    'phone' in obj
-  );
-};
-
-// Enhanced function to get claimant information regardless of structure
-const getClaimantInfo = (item: ExtendedItem) => {
-  // Check if claimedBy is an object that matches Person structure
-  if (item.claimedBy && isPersonObject(item.claimedBy)) {
-    return {
-      name: item.claimedBy.name || "N/A",
-      type: item.claimedBy.type || "N/A",
-      id: item.claimedBy.studentId || item.claimedBy.employeeId || "N/A",
-      email: item.claimedBy.email || "N/A",
-      phone: item.claimedBy.phone || "N/A"
-    };
-  }
-  
-  // Check if claimedBy is a string
-  if (item.claimedBy && typeof item.claimedBy === 'string') {
-    return {
-      name: item.claimedBy,
-      type: "N/A",
-      id: "N/A",
-      email: "N/A",
-      phone: "N/A"
-    };
-  }
-  
-  // Check direct properties first
-  if (item.claimant || item.claimantId || item.claimantEmail || item.claimantPhone) {
-    return {
-      name: item.claimant || "N/A",
-      type: item.claimantType || "N/A",
-      id: item.claimantId || "N/A",
-      email: item.claimantEmail || "N/A",
-      phone: item.claimantPhone || "N/A"
-    };
-  }
-  
-  // Check if claim information is stored in additionalData
-  if (item.additionalData) {
-    const { claimant, claimantId, claimantEmail, claimantPhone, claimantType } = item.additionalData;
-    if (claimant || claimantId || claimantEmail || claimantPhone) {
-      return {
-        name: claimant || "N/A",
-        type: claimantType || "N/A",
-        id: claimantId || "N/A",
-        email: claimantEmail || "N/A",
-        phone: claimantPhone || "N/A"
-      };
-    }
-  }
-  
-  // Default when no claimant info is found
-  return {
-    name: "N/A",
-    type: "N/A",
-    id: "N/A",
-    email: "N/A",
-    phone: "N/A"
-  };
-};
-
-// Format date for display
-const formatDate = (date: string | Date | undefined): string => {
-  if (!date) return "N/A";
-  try {
-    // Handle both string and Date objects
-    return format(typeof date === 'string' ? new Date(date) : date, "MMM dd, yyyy");
-  } catch (error) {
-    console.error("Error formatting date:", error);
-    return "Invalid Date";
-  }
-};
+import MobileItemList from "../../components/items/MobileItemList";
+import { formatToSentenceCase, formatDate } from "../../utils/formatters";
 
 const ClaimedItemsPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { items, loading, error } = useAppSelector((state) => state.items);
-  const printRef = useRef<HTMLDivElement>(null);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("");
-  const [viewItem, setViewItem] = useState<ExtendedItem | null>(null);
+  const [viewItem, setViewItem] = useState<Item | null>(null);
+  const [certificateDialogOpen, setCertificateDialogOpen] = useState(false);
+  const [selectedItemForCertificate, setSelectedItemForCertificate] = useState<Item | null>(null);
+  const [certificateBlob, setCertificateBlob] = useState<Blob | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<Item | null>(null);
+  const { user } = useAppSelector((state) => state.auth);
 
   // Fetch claimed items when component mounts
   useEffect(() => {
@@ -168,9 +76,7 @@ const ClaimedItemsPage: React.FC = () => {
     setPage(newPage);
   };
 
-  const handleChangeRowsPerPage = (
-    event: React.ChangeEvent<HTMLInputElement>
-  ) => {
+  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
     setRowsPerPage(parseInt(event.target.value, 10));
     setPage(0);
   };
@@ -185,7 +91,7 @@ const ClaimedItemsPage: React.FC = () => {
     setPage(0);
   };
 
-  const handleViewItem = (item: ExtendedItem) => {
+  const handleViewItem = (item: Item) => {
     setViewItem(item);
   };
 
@@ -193,167 +99,104 @@ const ClaimedItemsPage: React.FC = () => {
     setViewItem(null);
   };
 
-  const handlePrintReceipt = (item: ExtendedItem) => {
-    const receiptWindow = window.open("", "_blank");
-    if (!receiptWindow) {
-      alert("Please allow popups for this website");
+  const handleGenerateCertificate = async (item: Item) => {
+    if (!item || !item.id) {
+      console.error("Cannot generate certificate: Invalid item");
       return;
     }
 
-    const claimantInfo = getClaimantInfo(item);
+    try {
+      const certificateOptions = {
+        reportType: 'claimCertificate' as any,
+        title: 'Claim Certificate',
+        certificateData: {
+          itemName: item.name,
+          itemId: item.itemId || item.id,
+          claimedBy: typeof item.claimedBy === 'string' ? item.claimedBy : item.claimedBy?.name || 'Unknown',
+          claimDate: item.claimedDate ? new Date(item.claimedDate) : new Date(),
+          organization: 'De La Salle Lipa',
+          contactPerson: typeof item.claimedBy === 'string' ? item.claimedBy : item.claimedBy?.name || 'Unknown',
+          donationDate: item.claimedDate ? new Date(item.claimedDate) : new Date()
+        }
+      };
 
-    const receiptHtml = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Claim Receipt - ${item.name}</title>
-        <style>
-          body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #333;
-          }
-          .item-details, .claim-details {
-            margin-bottom: 20px;
-            background-color: #f9f9f9;
-            padding: 15px;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-          }
-          .footer {
-            margin-top: 40px;
-            text-align: center;
-            font-size: 0.9em;
-            color: #666;
-            border-top: 1px solid #ddd;
-            padding-top: 10px;
-          }
-          h1 {
-            font-size: 24px;
-            color: #333;
-          }
-          h2 {
-            font-size: 18px;
-            color: #444;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 5px;
-          }
-          .signature {
-            margin-top: 60px;
-            display: flex;
-            justify-content: space-between;
-          }
-          .signature-line {
-            width: 200px;
-            border-top: 1px solid #333;
-            margin-top: 50px;
-            text-align: center;
-          }
-          .property {
-            font-weight: bold;
-            color: #555;
-          }
-          @media print {
-            body {
-              padding: 0;
-              font-size: 12pt;
-            }
-            .no-print {
-              display: none;
-            }
-            button {
-              display: none;
-            }
-            .item-details, .claim-details {
-              page-break-inside: avoid;
-            }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>De La Salle Lipa - Lost & Found Claim Receipt</h1>
-        </div>
-        
-        <div class="item-details">
-          <h2>Item Details</h2>
-          <p><span class="property">Item ID:</span> ${item.itemId || "N/A"}</p>
-          <p><span class="property">Item Name:</span> ${item.name}</p>
-          <p><span class="property">Type:</span> ${item.type ? item.type.charAt(0).toUpperCase() + item.type.slice(1) : "N/A"}</p>
-          <p><span class="property">Description:</span> ${item.description || "N/A"}</p>
-          <p><span class="property">Color:</span> ${item.color || "N/A"}</p>
-          <p><span class="property">Brand:</span> ${item.brand || "N/A"}</p>
-          <p><span class="property">Date Found:</span> ${formatDate(item.foundDate)}</p>
-          <p><span class="property">Found Location:</span> ${item.foundLocation || "N/A"}</p>
-        </div>
-        
-        <div class="claim-details">
-          <h2>Claim Information</h2>
-          <p><span class="property">Claimed By:</span> ${claimantInfo.name}</p>
-          <p><span class="property">Type:</span> ${claimantInfo.type ? claimantInfo.type.charAt(0).toUpperCase() + claimantInfo.type.slice(1) : "N/A"}</p>
-          <p><span class="property">Student/Employee ID:</span> ${claimantInfo.id}</p>
-          <p><span class="property">Email:</span> ${claimantInfo.email}</p>
-          <p><span class="property">Phone:</span> ${claimantInfo.phone}</p>
-          <p><span class="property">Date Claimed:</span> ${formatDate(item.claimedDate || item.claimDate || item.additionalData?.claimDate)}</p>
-        </div>
-        
-        <div class="signature">
-          <div>
-            <div class="signature-line">
-              Claimant's Signature
-            </div>
-          </div>
-          <div>
-            <div class="signature-line">
-              Authorized by
-            </div>
-          </div>
-        </div>
-        
-        <div class="footer">
-          <p>De La Salle Lipa - Lost & Found Management System</p>
-          <p>This receipt was generated on ${format(new Date(), "MMMM dd, yyyy 'at' h:mm a")}</p>
-          <button class="no-print" onclick="window.print()">Print Receipt</button>
-        </div>
-      </body>
-      </html>
-    `;
-
-    receiptWindow.document.write(receiptHtml);
-    receiptWindow.document.close();
-    setTimeout(() => {
-      receiptWindow.print();
-    }, 500);
+      const blob = await generateReport([], certificateOptions);
+      setCertificateBlob(blob);
+      setSelectedItemForCertificate(item);
+      setCertificateDialogOpen(true);
+    } catch (error) {
+      console.error('Error generating claim certificate:', error);
+      alert('Failed to generate claim certificate. Please try again.');
+    }
   };
 
-  // Filter items based on search term and filter type
-  const filteredItems = items.filter((item) => {
-    // Ensure we only display items with 'claimed' status
-    if (item.status !== 'claimed') return false;
+  const handleCloseCertificateDialog = () => {
+    setCertificateDialogOpen(false);
+    setSelectedItemForCertificate(null);
+    setCertificateBlob(null);
+  };
+
+  const handleDownloadCertificate = () => {
+    if (!certificateBlob || !selectedItemForCertificate) return;
+
+    const url = URL.createObjectURL(certificateBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Claim_Certificate_${selectedItemForCertificate.itemId || selectedItemForCertificate.id}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDeleteClick = (item: Item) => {
+    setItemToDelete(item);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setItemToDelete(null);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!itemToDelete?.id) return;
     
-    const matchesSearch =
-      (item.itemId?.toLowerCase().includes(searchTerm.toLowerCase()) || false) ||
-      item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.description ? item.description.toLowerCase().includes(searchTerm.toLowerCase()) : false) ||
-      (isPersonObject(item.claimedBy) 
-        ? (item.claimedBy.name?.toLowerCase().includes(searchTerm.toLowerCase()) || false) 
-        : (typeof item.claimedBy === 'string' 
-            ? item.claimedBy.toLowerCase().includes(searchTerm.toLowerCase()) 
-            : false)) ||
-      (isPersonObject(item.claimedBy) && item.claimedBy.studentId 
-        ? item.claimedBy.studentId.toLowerCase().includes(searchTerm.toLowerCase()) 
-        : false);
+    try {
+      const deleteData = {
+        id: itemToDelete.id,
+        status: 'deleted' as const,
+        additionalData: {
+          deletedBy: {
+            name: user?.name || '',
+            type: (user?.role === 'admin' || user?.role === 'superAdmin' ? 'staff' : 'student') as 'student' | 'faculty' | 'staff' | 'visitor',
+            email: user?.email || '',
+          },
+          deleteDate: new Date(),
+          previousStatus: itemToDelete.status // Store the current status as previous status
+        }
+      };
 
-    const matchesType = filterType ? item.type === filterType : true;
+      console.log('Deleting item with data:', deleteData); // Debug log
 
+      // Update item status to deleted
+      const result = await dispatch(changeItemStatusAPI(deleteData)).unwrap();
+      console.log('Delete result:', result); // Debug log
+      
+      // Only refresh the claimed items list
+      await dispatch(fetchItemsByStatus('claimed'));
+      
+      setDeleteDialogOpen(false);
+      setItemToDelete(null);
+    } catch (error) {
+      console.error('Error marking item as deleted:', error);
+    }
+  };
+
+  // Filter items based on search term and type
+  const filteredItems = items.filter((item) => {
+    const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesType = !filterType || item.type === filterType;
     return matchesSearch && matchesType;
   });
 
@@ -361,11 +204,11 @@ const ClaimedItemsPage: React.FC = () => {
   const paginatedItems = filteredItems.slice(
     page * rowsPerPage,
     page * rowsPerPage + rowsPerPage
-  ).map(item => item as ExtendedItem);  // Cast items to ExtendedItem type
+  );
 
   return (
-    <Box sx={{ flexGrow: 1, p: 3 }}>
-      <Typography variant="h4" gutterBottom>
+    <Box sx={{ p: isMobile ? 2 : 3 }}>
+      <Typography variant={isMobile ? "h5" : "h4"} gutterBottom>
         Claimed Items
       </Typography>
 
@@ -375,18 +218,21 @@ const ClaimedItemsPage: React.FC = () => {
         </Alert>
       )}
 
-      {/* Search and Filter Bar */}
-      <Paper sx={{ p: 2, mb: 3 }}>
+      <Paper sx={{ p: 2, mb: 2 }}>
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} sm={6} md={4}>
             <TextField
               fullWidth
-              label="Search"
               variant="outlined"
+              placeholder="Search items..."
               value={searchTerm}
               onChange={handleSearchChange}
               InputProps={{
-                startAdornment: <SearchIcon color="action" sx={{ mr: 1 }} />,
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
               }}
             />
           </Grid>
@@ -418,23 +264,30 @@ const ClaimedItemsPage: React.FC = () => {
         </Grid>
       </Paper>
 
-      {/* Items Table */}
-      <TableContainer component={Paper}>
+      {/* Items Display */}
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <Box sx={{ display: "flex", justifyContent: "center", p: 3 }}>
             <CircularProgress />
           </Box>
+      ) : isMobile ? (
+        <MobileItemList
+          items={paginatedItems}
+          onViewItem={handleViewItem}
+          onPrintCertificate={handleGenerateCertificate}
+          showPrintButton={true}
+          showImage={true}
+        />
         ) : (
+        <TableContainer component={Paper}>
           <Table>
             <TableHead>
               <TableRow>
                 <TableCell>Item ID</TableCell>
                 <TableCell>Image</TableCell>
-                <TableCell>Item Name</TableCell>
+                <TableCell>Name</TableCell>
                 <TableCell>Type</TableCell>
                 <TableCell>Claimed By</TableCell>
-                <TableCell>Date Claimed</TableCell>
-                <TableCell>Student/Employee ID</TableCell>
+                <TableCell>Claim Date</TableCell>
                 <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
@@ -444,68 +297,42 @@ const ClaimedItemsPage: React.FC = () => {
                   <TableRow key={item.id}>
                     <TableCell>{item.itemId || "N/A"}</TableCell>
                     <TableCell>
-                      {item.imageUrl ? (
+                      <Box sx={{ 
+                        width: 125, 
+                        height: 125, 
+                        position: 'relative' 
+                      }}>
                         <ImageWithFallback
                           src={item.imageUrl}
                           alt={item.name}
-                          width={80}
-                          height={80}
+                          width="100%"
+                          height="100%"
                           sx={{
-                            objectFit: 'cover',
-                            borderRadius: 1,
                             cursor: 'pointer',
                             backgroundColor: '#f5f5f5',
-                            border: '1px solid #eee'
+                            border: '1px solid #eee',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                           }}
                           onClick={() => handleViewItem(item)}
                         />
-                      ) : (
-                        <Box
-                          sx={{
-                            width: 80,
-                            height: 80,
-                            bgcolor: 'grey.200',
-                            borderRadius: 1,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            border: '1px solid #ddd'
-                          }}
-                          onClick={() => handleViewItem(item)}
-                        >
-                          <ImageNotSupportedIcon />
                         </Box>
-                      )}
                     </TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>
-                      <Chip
-                        label={
-                          item.type.charAt(0).toUpperCase() + item.type.slice(1)
-                        }
-                        size="small"
-                        color={
-                          item.type === "electronics"
-                            ? "primary"
-                            : item.type === "book"
-                            ? "secondary"
-                            : item.type === "clothing"
-                            ? "success"
-                            : item.type === "accessory"
-                            ? "warning"
-                            : "default"
-                        }
-                      />
+                      {formatToSentenceCase(item.type)}
                     </TableCell>
-                    <TableCell>{getClaimantInfo(item).name}</TableCell>
                     <TableCell>
-                      {item.claimedDate ? formatDate(item.claimedDate) : 
-                       item.claimDate ? formatDate(item.claimDate) : 
-                       item.additionalData?.claimDate ? formatDate(item.additionalData.claimDate) : "N/A"}
+                      {typeof item.claimedBy === 'string' 
+                        ? item.claimedBy 
+                        : item.claimedBy?.name || "N/A"}
                     </TableCell>
-                    <TableCell>{getClaimantInfo(item).id}</TableCell>
                     <TableCell>
+                      {item.claimedDate
+                        ? formatDate(item.claimedDate)
+                        : "N/A"}
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
                       <IconButton
                         size="small"
                         color="primary"
@@ -516,23 +343,23 @@ const ClaimedItemsPage: React.FC = () => {
                       <IconButton
                         size="small"
                         color="secondary"
-                        onClick={() => handlePrintReceipt(item)}
+                          onClick={() => handleGenerateCertificate(item)}
                       >
                         <PrintIcon />
                       </IconButton>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={8} align="center">
+                  <TableCell colSpan={7} align="center">
                     No claimed items found
                   </TableCell>
                 </TableRow>
               )}
             </TableBody>
           </Table>
-        )}
         <TablePagination
           rowsPerPageOptions={[5, 10, 25]}
           component="div"
@@ -543,137 +370,15 @@ const ClaimedItemsPage: React.FC = () => {
           onRowsPerPageChange={handleChangeRowsPerPage}
         />
       </TableContainer>
+      )}
 
       {/* View Item Dialog */}
       <Dialog open={!!viewItem} onClose={handleCloseViewDialog} maxWidth="sm" fullWidth>
         {viewItem && (
           <>
-            <DialogTitle>Claimed Item Details</DialogTitle>
+            <DialogTitle>Item Details</DialogTitle>
             <DialogContent>
               <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Item ID</Typography>
-                  <Typography variant="body1">{viewItem.itemId || "N/A"}</Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Item Name</Typography>
-                  <Typography variant="body1">{viewItem.name}</Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Type</Typography>
-                  <Typography variant="body1">
-                    {viewItem.type.charAt(0).toUpperCase() +
-                      viewItem.type.slice(1)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="subtitle2">Description</Typography>
-                  <Typography variant="body1">
-                    {viewItem.description}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Color</Typography>
-                  <Typography variant="body1">
-                    {viewItem.color || "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Brand</Typography>
-                  <Typography variant="body1">
-                    {viewItem.brand || "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Date Reported</Typography>
-                  <Typography variant="body1">
-                    {viewItem.dateReported ? formatDate(viewItem.dateReported) : "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Date Found</Typography>
-                  <Typography variant="body1">
-                    {viewItem.foundDate ? formatDate(viewItem.foundDate) : "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Found Location</Typography>
-                  <Typography variant="body1">
-                    {viewItem.foundLocation || "N/A"}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2">Date Claimed</Typography>
-                  <Typography variant="body1">
-                    {viewItem.claimedDate ? formatDate(viewItem.claimedDate) : 
-                     viewItem.claimDate ? formatDate(viewItem.claimDate) : 
-                     viewItem.additionalData?.claimDate ? formatDate(viewItem.additionalData.claimDate) : "N/A"}
-                  </Typography>
-                </Grid>
-
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 1 }} />
-                  <Typography variant="subtitle1">
-                    Claimant Information
-                  </Typography>
-                </Grid>
-                
-                {/* Display claimant information using the helper function */}
-                {(() => {
-                  const claimantInfo = getClaimantInfo(viewItem as ExtendedItem);
-                  return (
-                    <>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="subtitle2">Name</Typography>
-                        <Typography variant="body1">
-                          {claimantInfo.name}
-                        </Typography>
-                      </Grid>
-                      {claimantInfo.type !== "N/A" && (
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2">Type</Typography>
-                          <Typography variant="body1">
-                            {claimantInfo.type.charAt(0).toUpperCase() + claimantInfo.type.slice(1)}
-                          </Typography>
-                        </Grid>
-                      )}
-                      {claimantInfo.id !== "N/A" && (
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2">
-                            {claimantInfo.type === 'student' ? 'Student ID' : 
-                            claimantInfo.type === 'employee' ? 'Employee ID' : 'ID Number'}
-                          </Typography>
-                          <Typography variant="body1">
-                            {claimantInfo.id}
-                          </Typography>
-                        </Grid>
-                      )}
-                      {claimantInfo.email !== "N/A" && (
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2">Email</Typography>
-                          <Typography variant="body1">
-                            {claimantInfo.email}
-                          </Typography>
-                        </Grid>
-                      )}
-                      {claimantInfo.phone !== "N/A" && (
-                        <Grid item xs={12} sm={6}>
-                          <Typography variant="subtitle2">Phone</Typography>
-                          <Typography variant="body1">
-                            {claimantInfo.phone}
-                          </Typography>
-                        </Grid>
-                      )}
-                    </>
-                  );
-                })()}
-
-                {viewItem.notes && (
-                  <Grid item xs={12}>
-                    <Typography variant="subtitle2">Additional Notes</Typography>
-                    <Typography variant="body1">{viewItem.notes}</Typography>
-                  </Grid>
-                )}
                 {viewItem.imageUrl && (
                   <Grid item xs={12}>
                     <Typography variant="subtitle2">Image</Typography>
@@ -683,11 +388,52 @@ const ClaimedItemsPage: React.FC = () => {
                         alt={viewItem.name}
                         width="100%"
                         height="auto"
-                        sx={{ maxHeight: '300px', objectFit: 'contain' }}
+                        sx={{ 
+                          maxHeight: '300px', 
+                          objectFit: 'contain',
+                          borderRadius: 1,
+                          boxShadow: '0 4px 8px rgba(0,0,0,0.1)'
+                        }}
                       />
                     </Box>
                   </Grid>
                 )}
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2">Item ID</Typography>
+                  <Typography variant="body1">{viewItem.itemId || "N/A"}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2">Name</Typography>
+                  <Typography variant="body1">{viewItem.name}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2">Type</Typography>
+                  <Typography variant="body1">
+                    {formatToSentenceCase(viewItem.type)}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2">Claimed By</Typography>
+                  <Typography variant="body1">
+                    {typeof viewItem.claimedBy === 'string' 
+                      ? viewItem.claimedBy 
+                      : viewItem.claimedBy?.name || "N/A"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="subtitle2">Claim Date</Typography>
+                  <Typography variant="body1">
+                    {viewItem.claimedDate
+                      ? formatDate(viewItem.claimedDate)
+                      : "N/A"}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2">Description</Typography>
+                  <Typography variant="body1">
+                    {viewItem.description || "N/A"}
+                  </Typography>
+                </Grid>
               </Grid>
             </DialogContent>
             <DialogActions>
@@ -696,13 +442,156 @@ const ClaimedItemsPage: React.FC = () => {
                 variant="contained"
                 color="secondary"
                 startIcon={<PrintIcon />}
-                onClick={() => handlePrintReceipt(viewItem)}
+                onClick={() => handleGenerateCertificate(viewItem)}
               >
-                Print Receipt
+                Print Certificate
               </Button>
             </DialogActions>
           </>
         )}
+      </Dialog>
+
+      {/* Certificate Dialog */}
+      <Dialog
+        open={certificateDialogOpen}
+        onClose={handleCloseCertificateDialog}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Claim Certificate</DialogTitle>
+        <DialogContent>
+          {certificateBlob ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <iframe
+                src={URL.createObjectURL(certificateBlob)}
+                width="100%"
+                height="600px"
+                title="Claim Certificate"
+                style={{ border: 'none' }}
+              />
+            </Box>
+          ) : (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseCertificateDialog}>Close</Button>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleDownloadCertificate}
+            disabled={!certificateBlob}
+            startIcon={<PrintIcon />}
+          >
+            Download Certificate
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1,
+          color: 'error.main',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          pb: 2,
+          typography: 'h6'
+        }}>
+          <WarningIcon color="error" />
+          Confirm Deletion
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="h6" color="text.primary" gutterBottom>
+              Are you sure you want to delete this item?
+            </Typography>
+            <Box sx={{ 
+              bgcolor: 'error.main', 
+              p: 2, 
+              borderRadius: 1,
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 1
+            }}>
+              <WarningIcon sx={{ color: 'white', mt: 0.5 }} />
+              <Typography variant="body1" sx={{ color: 'white' }}>
+                This action cannot be undone. The item will be moved to the Deleted Items tab for record-keeping purposes.
+              </Typography>
+            </Box>
+            <Box sx={{ 
+              bgcolor: 'background.paper', 
+              p: 2, 
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+            }}>
+              <Typography variant="subtitle1" color="text.primary" gutterBottom sx={{ fontWeight: 500 }}>
+                Item Details:
+              </Typography>
+              <Typography variant="body1">
+                <strong>Name:</strong> {itemToDelete?.name}
+              </Typography>
+              <Typography variant="body1">
+                <strong>ID:</strong> {itemToDelete?.itemId}
+              </Typography>
+              <Typography variant="body1">
+                <strong>Type:</strong> {itemToDelete?.type ? 
+                  itemToDelete.type.charAt(0).toUpperCase() + itemToDelete.type.slice(1) : 'N/A'}
+              </Typography>
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ 
+          px: 3, 
+          py: 2, 
+          borderTop: '1px solid',
+          borderColor: 'divider',
+          gap: 1
+        }}>
+          <Button 
+            onClick={handleDeleteCancel} 
+            variant="outlined"
+            sx={{ 
+              minWidth: 100,
+              '&:hover': {
+                bgcolor: 'action.hover'
+              }
+            }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleDeleteConfirm} 
+            color="error" 
+            variant="contained"
+            startIcon={<DeleteIcon />}
+            sx={{ 
+              minWidth: 100,
+              '&:hover': {
+                bgcolor: 'error.dark'
+              }
+            }}
+          >
+            Delete
+          </Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

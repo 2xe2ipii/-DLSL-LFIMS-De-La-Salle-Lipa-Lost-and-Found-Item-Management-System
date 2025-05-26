@@ -71,11 +71,16 @@ api.interceptors.response.use(
       // If the error message contains "Token is not valid", log out the user
       if (error.response.data.message === 'Token is not valid') {
         console.log('Invalid token detected, logging out...');
+        const lastUserRole = localStorage.getItem('lastUserRole');
         store.dispatch(logout());
         
-        // Redirect to login page if we're in a browser environment
+        // Redirect to appropriate login page based on last user role
         if (typeof window !== 'undefined') {
-          window.location.href = '/login';
+          if (lastUserRole === 'admin' || lastUserRole === 'superAdmin') {
+            window.location.href = '/admin-login';
+          } else {
+            window.location.href = '/';
+          }
         }
       }
     }

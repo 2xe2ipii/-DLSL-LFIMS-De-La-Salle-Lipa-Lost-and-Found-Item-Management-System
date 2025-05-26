@@ -62,8 +62,8 @@ exports.register = async (req, res) => {
 // Login user
 exports.login = async (req, res) => {
   try {
-    const { username, password } = req.body;
-    console.log(`Login attempt for username: ${username}`);
+    const { username, password, role } = req.body;
+    console.log(`Login attempt for username: ${username} as role: ${role}`);
     
     // Check user exists
     const user = await User.findOne({ username });
@@ -72,19 +72,50 @@ exports.login = async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
     
-    console.log(`User found: ${user.username}, role: ${user.role}`);
+    console.log(`Before login: loginAttempts=${user.loginAttempts}, lockUntil=${user.lockUntil}`);
+
+    // Check if account is locked
+    if (user.lockUntil && user.lockUntil > Date.now()) {
+      const minutes = Math.ceil((user.lockUntil - Date.now()) / 60000);
+      console.log(`Account is locked. lockUntil=${user.lockUntil}, now=${Date.now()}`);
+      return res.status(403).json({ message: `Account locked. Try again in ${minutes} minute(s).` });
+    }
+
+    // Check role matches
+    console.log(`User role: ${user.role}, Selected role: ${role}`);
+    if (user.role !== role) {
+      return res.status(400).json({ message: 'Invalid credentials: role mismatch' });
+    }
     
     // Check password
     const isMatch = await user.comparePassword(password);
-    console.log(`Password match result: ${isMatch ? 'Success' : 'Failed'}`);
-    
     if (!isMatch) {
-      return res.status(400).json({ message: 'Invalid credentials' });
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
+      // Lock account after 3 failed attempts
+      if (user.loginAttempts >= 3) {
+        user.lockUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+        await user.save();
+        console.log(`Account locked for 15 minutes. loginAttempts=${user.loginAttempts}, lockUntil=${user.lockUntil}`);
+        return res.status(403).json({ message: 'Account locked due to too many failed attempts. Please try again after 15 minutes.' });
+      } else {
+        await user.save();
+        console.log(`Failed attempt. loginAttempts=${user.loginAttempts}, lockUntil=${user.lockUntil}`);
+        if (user.loginAttempts === 1) {
+          return res.status(400).json({ message: 'Invalid credentials. Warning: 2 attempts left before lockout.' });
+        } else if (user.loginAttempts === 2) {
+          return res.status(400).json({ message: 'Invalid credentials. Warning: 1 attempt left before 15 minute lockout.' });
+        } else {
+          return res.status(400).json({ message: 'Invalid credentials.' });
+        }
+      }
     }
-    
-    // Update last login
+
+    // Successful login: reset attempts and lock
+    user.loginAttempts = 0;
+    user.lockUntil = undefined;
     user.lastLogin = new Date();
     await user.save();
+    console.log(`Successful login. loginAttempts reset. lockUntil cleared.`);
     console.log(`Last login updated for user: ${username}`);
     
     // Create JWT token
@@ -147,12 +178,18 @@ exports.createUser = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Only superAdmin can create admin accounts.' });
     }
 
-    const { username, email, password, name } = req.body;
+    const { username, email, password, name, role } = req.body;
     
     // Validate required fields
     if (!username || !email || !password || !name) {
       console.log('Validation failed: Missing required fields');
       return res.status(400).json({ message: 'All fields are required' });
+    }
+    
+    // Validate role
+    if (role !== 'admin' && role !== 'viewer') {
+      console.log('Validation failed: Invalid role');
+      return res.status(400).json({ message: 'Role must be either admin or viewer' });
     }
     
     // Check if user exists
@@ -162,21 +199,21 @@ exports.createUser = async (req, res) => {
       return res.status(400).json({ message: 'User already exists with that username or email' });
     }
     
-    // Create new admin user (always create as admin role)
+    // Create new user with specified role
     const user = new User({
       username,
       email,
       password,
       name,
-      role: 'admin', // Force role to be admin
+      role: role, // Use the specified role
       createdAt: new Date()
     });
     
     await user.save();
-    console.log(`Admin user created successfully: ${username} (${email})`);
+    console.log(`User created successfully: ${username} (${email}) with role: ${role}`);
     
     res.status(201).json({ 
-      message: 'Admin user created successfully',
+      message: 'User created successfully',
       user: {
         id: user.id,
         username: user.username,
@@ -187,8 +224,8 @@ exports.createUser = async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error creating admin user:', error);
-    res.status(500).json({ message: 'Server error while creating admin user' });
+    console.error('Error creating user:', error);
+    res.status(500).json({ message: 'Server error while creating user' });
   }
 };
 
@@ -218,5 +255,34 @@ exports.resetAdminPasswords = async (req, res) => {
   } catch (error) {
     console.error('Error resetting admin passwords:', error);
     res.status(500).json({ message: 'Server error while resetting admin passwords' });
+  }
+};
+
+// Change password
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    // Find user
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Verify current password
+    const isMatch = await user.comparePassword(currentPassword);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
+
+    // Update password
+    user.password = newPassword;
+    await user.save();
+
+    res.json({ message: 'Password changed successfully' });
+  } catch (error) {
+    console.error('Error changing password:', error);
+    res.status(500).json({ message: 'Server error while changing password' });
   }
 }; 

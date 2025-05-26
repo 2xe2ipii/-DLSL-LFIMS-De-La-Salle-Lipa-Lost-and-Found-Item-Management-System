@@ -41,7 +41,8 @@ import {
   ImageNotSupported as ImageNotSupportedIcon
 } from "@mui/icons-material";
 import { useAppSelector, useAppDispatch } from "../../hooks/useRedux";
-import { Item } from "../../types/item";
+import { Item, ItemType, ItemStatus } from "../../types/item";
+import { UserRole } from "../../types/user";
 import { 
   fetchAllItems, 
   fetchItemsByStatus, 
@@ -54,6 +55,9 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import { generateReport } from "../../services/reportService";
 import uploadService from "../../services/uploadService";
 import ImageWithFallback from "../../components/common/ImageWithFallback";
+import { formatToSentenceCase, formatDate } from "../../utils/formatters";
+import MobileItemList from "../../components/items/MobileItemList";
+import { useTheme, useMediaQuery } from "@mui/material";
 
 // Helper to check if an item is eligible for donation (older than 3 months)
 const isEligibleForDonation = (item: Item): boolean => {
@@ -85,6 +89,12 @@ interface DonationFormData {
 const ForDonationPage: React.FC = () => {
   const dispatch = useAppDispatch();
   const { items, loading, error } = useAppSelector((state) => state.items);
+  const { user } = useAppSelector((state) => state.auth);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  
+  // Check if user is admin or superAdmin
+  const isAdmin = user?.role === 'admin' || user?.role === 'superAdmin';
   
   const [tabValue, setTabValue] = useState(0);
   const [page, setPage] = useState(0);
@@ -227,7 +237,7 @@ const ForDonationPage: React.FC = () => {
 
     const donationData = {
       id: selectedItemForDonation.id,
-      status: 'donated' as 'lost' | 'found' | 'claimed' | 'donated',
+      status: 'donated' as ItemStatus,
       additionalData: { 
         donatedTo: donationForm.organization,
         contactPerson: donationForm.contactPerson,
@@ -316,20 +326,6 @@ const ForDonationPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
-  const formatDate = (date: string | Date | undefined): string => {
-    if (!date) return "N/A";
-    try {
-      return new Date(date).toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      });
-    } catch (error) {
-      console.error("Error formatting date:", error);
-      return "Invalid Date";
-    }
-  };
-
   const getItemAge = (date: string | Date | undefined): string => {
     if (!date) return "N/A";
     try {
@@ -344,9 +340,14 @@ const ForDonationPage: React.FC = () => {
     }
   };
 
+  const handleEditItem = (item: Item) => {
+    // TODO: Implement edit functionality
+    console.log('Edit item:', item);
+  };
+
   return (
-    <Box sx={{ flexGrow: 1, p: 3 }}>
-      <Typography variant="h4" gutterBottom>
+    <Box sx={{ p: isMobile ? 2 : 3 }}>
+      <Typography variant={isMobile ? "h5" : "h4"} gutterBottom>
         Donation Management
       </Typography>
 
@@ -391,7 +392,7 @@ const ForDonationPage: React.FC = () => {
       </Paper>
 
       {/* Search and Filter Bar */}
-      <Paper sx={{ p: 2, mb: 3 }}>
+      <Paper sx={{ p: 2, mb: 2 }}>
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} sm={6} md={4}>
             <TextField
@@ -433,13 +434,25 @@ const ForDonationPage: React.FC = () => {
         </Grid>
       </Paper>
 
-      {/* Items Table */}
-      <TableContainer component={Paper}>
+      {/* Items Display */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
             <CircularProgress />
           </Box>
+      ) : isMobile ? (
+        <MobileItemList
+          items={paginatedItems}
+          onViewItem={handleViewItem}
+          onEditItem={isAdmin ? handleEditItem : undefined}
+          onClaimItem={tabValue === 0 ? handleOpenDonateDialog : undefined}
+          onPrintCertificate={tabValue === 1 ? handleGenerateCertificate : undefined}
+          isAdmin={isAdmin}
+          showImage={true}
+          showClaimButton={tabValue === 0}
+          showPrintButton={tabValue === 1}
+        />
         ) : (
+        <TableContainer component={Paper}>
           <Table>
             <TableHead>
               <TableRow>
@@ -470,25 +483,30 @@ const ForDonationPage: React.FC = () => {
                   <TableRow key={item.id}>
                     <TableCell>{item.itemId || "N/A"}</TableCell>
                     <TableCell>
+                      <Box sx={{ 
+                        width: 125, 
+                        height: 125, 
+                        position: 'relative' 
+                      }}>
                       <ImageWithFallback
                         src={item.imageUrl}
                         alt={item.name}
-                        width={80}
-                        height={80}
+                          width="100%"
+                          height="100%"
                         sx={{ 
-                          objectFit: 'cover', 
-                          borderRadius: 1,
+                            cursor: 'pointer',
+                            backgroundColor: '#f5f5f5',
                           border: '1px solid #eee',
-                          boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
                         }}
+                          onClick={() => handleViewItem(item)}
                       />
+                      </Box>
                     </TableCell>
                     <TableCell>{item.name}</TableCell>
                     <TableCell>
                       <Chip
-                        label={
-                          item.type.charAt(0).toUpperCase() + item.type.slice(1)
-                        }
+                        label={formatToSentenceCase(item.type)}
                         size="small"
                         color={
                           item.type === "electronics"
@@ -518,6 +536,7 @@ const ForDonationPage: React.FC = () => {
                       </>
                     )}
                     <TableCell>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
                       <IconButton
                         size="small"
                         color="primary"
@@ -542,6 +561,7 @@ const ForDonationPage: React.FC = () => {
                           <PrintIcon />
                         </IconButton>
                       )}
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))
@@ -554,7 +574,6 @@ const ForDonationPage: React.FC = () => {
               )}
             </TableBody>
           </Table>
-        )}
         <TablePagination
           rowsPerPageOptions={[5, 10, 25]}
           component="div"
@@ -565,6 +584,7 @@ const ForDonationPage: React.FC = () => {
           onRowsPerPageChange={handleChangeRowsPerPage}
         />
       </TableContainer>
+      )}
 
       {/* View Item Dialog */}
       <Dialog open={!!viewItem} onClose={handleCloseViewDialog} maxWidth="sm" fullWidth>

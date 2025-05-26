@@ -3,6 +3,9 @@ import { Item, ItemStatus } from '../../types/item';
 import api from '../../services/api';
 import matchingService from '../../services/matchingService';
 import { AppDispatch, RootState } from '../index';
+import itemService from '../../services/itemService';
+import axios from 'axios';
+import { API_URL } from '../../config';
 
 // Define AppThunk type
 export type AppThunk<ReturnType = void> = (
@@ -80,33 +83,16 @@ export const updateExistingItem = createAsyncThunk(
   }
 );
 
-export const changeItemStatusAPI = createAsyncThunk(
+export const changeItemStatusAPI = createAsyncThunk<Item, { id: string; status: ItemStatus; additionalData?: any }>(
   'items/changeStatus',
-  async (
-    { id, status, additionalData, claimedBy }: 
-    { id: string; status: ItemStatus; additionalData?: any; claimedBy?: any },
-    { rejectWithValue }
-  ) => {
+  async ({ id, status, additionalData }, { rejectWithValue }) => {
     try {
-      // Prepare the request data - handle both claimedBy directly or in additionalData
+      // Prepare the request data
       const requestData: any = { status };
       
-      // If claimedBy is provided directly, add it to the request
-      if (claimedBy) {
-        requestData.claimedBy = claimedBy;
-      }
-      
-      // Add any other additional data
+      // Add any additional data
       if (additionalData) {
-        // If additionalData contains claimedBy, extract it to the top level
-        if (additionalData.claimedBy) {
-          requestData.claimedBy = additionalData.claimedBy;
-          // Create a copy without claimedBy for other fields
-          const { claimedBy: _, ...otherData } = additionalData;
-          requestData.additionalData = otherData;
-        } else {
-          requestData.additionalData = additionalData;
-        }
+        requestData.additionalData = additionalData;
       }
       
       console.log('Sending status change request:', { id, requestData }); // Debug log
@@ -231,6 +217,35 @@ export const processItemsForDonation = (): AppThunk<{success: boolean, count: nu
     }
   };
 
+// Delete item
+export const deleteItem = createAsyncThunk<Item, string>(
+  "items/deleteItem",
+  async (itemId: string, { rejectWithValue }) => {
+    try {
+      const response = await api.delete(`/items/${itemId}`);
+      return response.data as Item;
+    } catch (error: any) {
+      return rejectWithValue(error.response?.data?.message || 'Failed to delete item');
+    }
+  }
+);
+
+// Restore item
+export const restoreItem = createAsyncThunk<Item, { id: string }>(
+  'items/restoreItem',
+  async ({ id }, { rejectWithValue }) => {
+    try {
+      console.log('Restoring item:', id); // Debug log
+      const response = await api.put(`/items/${id}/restore`);
+      console.log('Restore response:', response.data); // Debug log
+      return response.data as Item;
+    } catch (error: any) {
+      console.error('Restore error:', error.response?.data || error);
+      return rejectWithValue(error.response?.data?.message || 'Failed to restore item');
+    }
+  }
+);
+
 const initialState: ItemsState = {
   items: [],
   loading: false,
@@ -328,9 +343,16 @@ const itemsSlice = createSlice({
       })
       .addCase(changeItemStatusAPI.fulfilled, (state, action) => {
         state.loading = false;
-        const index = state.items.findIndex((item) => item.id === action.payload.id);
-        if (index !== -1) {
-          state.items[index] = action.payload;
+        // If the item is being deleted, remove it from the current list
+        if (action.payload.status === 'deleted') {
+          console.log('Removing deleted item from state:', action.payload.id); // Debug log
+          state.items = state.items.filter(item => item.id !== action.payload.id);
+        } else {
+          // Otherwise, update the item in the list
+          const index = state.items.findIndex((item) => item.id === action.payload.id);
+          if (index !== -1) {
+            state.items[index] = action.payload;
+          }
         }
       })
       .addCase(changeItemStatusAPI.rejected, (state, action) => {
@@ -391,6 +413,35 @@ const itemsSlice = createSlice({
       .addCase(markItemForDonation.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+      })
+      // Delete item
+      .addCase(deleteItem.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(deleteItem.fulfilled, (state, action) => {
+        state.loading = false;
+        // Remove the item from the current list
+        state.items = state.items.filter(item => item.id !== action.payload.id);
+      })
+      .addCase(deleteItem.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || "Failed to delete item";
+      })
+      // Restore item
+      .addCase(restoreItem.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(restoreItem.fulfilled, (state, action) => {
+        state.loading = false;
+        // Remove the item from the deleted list
+        state.items = state.items.filter(item => item.id !== action.payload.id);
+        console.log('Item restored:', action.payload); // Debug log
+      })
+      .addCase(restoreItem.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.error.message || "Failed to restore item";
       });
   },
 });

@@ -11,16 +11,16 @@ exports.getAdminUsers = async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Only Super Admin can view all users.' });
     }
 
-    // Fetch all admin and superAdmin users
-    console.log('Fetching admin users from database');
-    const adminUsers = await User.find({ 
-      role: { $in: ['admin', 'superAdmin'] } 
+    // Fetch all admin, superAdmin, and viewer users
+    console.log('Fetching users from database');
+    const users = await User.find({ 
+      role: { $in: ['admin', 'superAdmin', 'viewer'] } 
     }).select('-password').sort({ createdAt: -1 });
 
-    console.log(`Found ${adminUsers.length} admin users`);
+    console.log(`Found ${users.length} users`);
     
     // Transform the _id to id for frontend compatibility
-    const transformedUsers = adminUsers.map(user => {
+    const transformedUsers = users.map(user => {
       const userObj = user.toObject();
       userObj.id = userObj._id.toString();
       delete userObj._id;
@@ -30,7 +30,7 @@ exports.getAdminUsers = async (req, res) => {
     console.log('Sending user data to client');
     res.json(transformedUsers);
   } catch (error) {
-    console.error('Error fetching admin users:', error);
-    res.status(500).json({ message: 'Server error while fetching admin users' });
+    console.error('Error fetching users:', error);
+    res.status(500).json({ message: 'Server error while fetching users' });
   }
 }; 

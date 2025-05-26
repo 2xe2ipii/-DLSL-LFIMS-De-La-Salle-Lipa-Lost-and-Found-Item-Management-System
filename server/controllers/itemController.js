@@ -81,7 +81,7 @@ exports.createItem = async (req, res) => {
       notes
     } = req.body;
     
-    // Generate a unique itemId
+    // Generate itemId with date component for better uniqueness
     const date = new Date();
     const typePrefix = type.substring(0, 3).toUpperCase();
     const datePart = `${date.getFullYear()}${(date.getMonth() + 1).toString().padStart(2, '0')}${date.getDate().toString().padStart(2, '0')}`;
@@ -123,8 +123,8 @@ exports.createItem = async (req, res) => {
     
     res.json(item);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error creating item:', error);
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 };
 
@@ -205,12 +205,29 @@ exports.deleteItem = async (req, res) => {
       return res.status(404).json({ message: 'Item not found' });
     }
     
-    await Item.findByIdAndDelete(id);
+    // Store the exact status before deletion
+    const originalStatus = item.status;
     
-    res.json({ message: 'Item deleted successfully' });
+    // Update the item with deleted status and store original status
+    const updatedItem = await Item.findByIdAndUpdate(
+      id,
+      { 
+        status: 'deleted',
+        deletedAt: new Date(),
+        additionalData: {
+          previousStatus: originalStatus // Store the exact original status
+        }
+      },
+      { new: true }
+    )
+    .populate('reportedBy')
+    .populate('claimedBy')
+    .populate('foundBy');
+    
+    res.json(updatedItem);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error deleting item:', error);
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 };
 
@@ -219,22 +236,38 @@ exports.changeItemStatus = async (req, res) => {
   try {
     const { id } = req.params;
     const { status, additionalData } = req.body;
+    console.log('Changing item status:', { id, status, additionalData }); // Debug log
     
+    const item = await Item.findById(id);
+    if (!item) {
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
     const updateData = { status };
     
     // Add additional data based on the new status
-    if (status === 'claimed' && additionalData.claimedBy) {
+    if (status === 'claimed' && additionalData?.claimedBy) {
       updateData.claimedBy = await getOrCreatePerson(additionalData.claimedBy);
       updateData.claimDate = additionalData.claimDate || new Date();
-    } else if (status === 'found' && additionalData.foundBy) {
+    } else if (status === 'found' && additionalData?.foundBy) {
       updateData.foundBy = await getOrCreatePerson(additionalData.foundBy);
       updateData.foundDate = additionalData.foundDate || new Date();
       updateData.foundLocation = additionalData.foundLocation;
+    } else if (status === 'deleted') {
+      // For deletion, store the original status and deletion info
+      updateData.deletedAt = new Date();
+      updateData.additionalData = {
+        previousStatus: item.status, // Store the current status before deletion
+        deletedBy: additionalData?.deletedBy,
+        deleteDate: additionalData?.deleteDate
+      };
     }
+    
+    console.log('Update data:', updateData); // Debug log
     
     const updatedItem = await Item.findByIdAndUpdate(
       id,
-      updateData,
+      { $set: updateData },
       { new: true }
     )
     .populate('reportedBy')
@@ -245,10 +278,11 @@ exports.changeItemStatus = async (req, res) => {
       return res.status(404).json({ message: 'Item not found' });
     }
     
+    console.log('Updated item:', updatedItem); // Debug log
     res.json(updatedItem);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error changing item status:', error);
+    res.status(500).json({ message: error.message || 'Server error' });
   }
 };
 
@@ -259,6 +293,8 @@ exports.getDashboardStats = async (req, res) => {
     const foundCount = await Item.countDocuments({ status: 'found' });
     const claimedCount = await Item.countDocuments({ status: 'claimed' });
     const donatedCount = await Item.countDocuments({ status: 'donated' });
+    const missingCount = await Item.countDocuments({ status: 'missing' });
+    const inCustodyCount = await Item.countDocuments({ status: 'in_custody' });
     
     // Get category statistics
     const categoryStats = await Item.aggregate([
@@ -334,7 +370,7 @@ exports.getDashboardStats = async (req, res) => {
     });
     
     // Calculate success rate (claimed / (lost + found))
-    const totalItems = lostCount + foundCount + claimedCount + donatedCount;
+    const totalItems = lostCount + foundCount + claimedCount + donatedCount + missingCount + inCustodyCount;
     const successRate = totalItems > 0 
       ? Math.round((claimedCount / totalItems) * 100) 
       : 0;
@@ -344,6 +380,8 @@ exports.getDashboardStats = async (req, res) => {
       foundItems: foundCount,
       claimedItems: claimedCount,
       donatedItems: donatedCount,
+      missingItems: missingCount,
+      inCustodyItems: inCustodyCount,
       itemCategories,
       monthlyData: {
         labels: months,
@@ -355,5 +393,56 @@ exports.getDashboardStats = async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Restore a deleted item
+exports.restoreItem = async (req, res) => {
+  try {
+    const { id } = req.params;
+    console.log('Restoring item:', id); // Debug log
+
+    // Find the item first to get its previous status
+    const item = await Item.findById(id);
+    if (!item) {
+      console.error('Item not found:', id);
+      return res.status(404).json({ message: 'Item not found' });
+    }
+
+    // Get the previous status from additionalData
+    const previousStatus = item.additionalData?.previousStatus;
+    console.log('Previous status:', previousStatus); // Debug log
+
+    if (!previousStatus) {
+      console.error('No previous status found for item:', id);
+      return res.status(400).json({ message: 'No previous status found for this item' });
+    }
+
+    // Update the item with the original status and clean up deletion-related fields
+    const updatedItem = await Item.findByIdAndUpdate(
+      id,
+      {
+        $set: {
+          status: previousStatus, // Use the exact previous status
+          additionalData: {
+            ...item.additionalData,
+            restoredBy: req.user,
+            restoreDate: new Date()
+          }
+        },
+        $unset: {
+          deletedAt: 1,
+          deletedBy: 1,
+          deleteDate: 1
+        }
+      },
+      { new: true }
+    );
+
+    console.log('Item restored successfully:', updatedItem); // Debug log
+    res.json(updatedItem);
+  } catch (error) {
+    console.error('Error restoring item:', error);
+    res.status(500).json({ message: 'Error restoring item', error: error.message });
   }
 }; 

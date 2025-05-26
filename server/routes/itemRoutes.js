@@ -25,6 +25,9 @@ router.put('/:id', itemController.updateItem);
 // Change item status
 router.patch('/:id/status', itemController.changeItemStatus);
 
+// Restore a deleted item
+router.put('/:id/restore', itemController.restoreItem);
+
 // Delete an item (only for Super Admin)
 router.delete('/:id', adminMiddleware, itemController.deleteItem);
 
