@@ -5,9 +5,12 @@ A web application for managing lost and found items at De La Salle Lipa.
 ## Prerequisites
 
 - Node.js (v16 or higher)
-- MongoDB (local or Atlas)
+- MongoDB (local)
 
 ## Setup Instructions
+
+[REQUIRED] MongoDB installed locally on your computer.
+[REQUIRED] Node.js v16 or higher.
 
 1. Clone the repository
 2. Install dependencies:
@@ -20,34 +23,23 @@ A web application for managing lost and found items at De La Salle Lipa.
    MONGODB_URI=mongodb://localhost:27017/dlsl-lfims
    JWT_SECRET=your_secret_key_here
    ```
-   
-   Note: If you don't have MongoDB installed locally, you can use MongoDB Atlas by setting:
-   ```
-   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/dlsl-lfims
-   ```
 
-4. Run: --> cd server --> node forceFixUsers.js
+4. Run: --> cd server --> node forceFixUsers.js. This will allow you to log in using:
 
-5. (Optional)Seed the database with initial data:
+   Email: superadmin
+   Password: 12345678
 
-    ```
-   npm run seed
-   ```
+   You can now start creating Admin and Viewer accounts for testing.
 
-7. Start the development server:
-   ```
-   npm run dev
-   ```
-   
-   This will start:
-   - React frontend on http://localhost:3001
-   - Express backend on http://localhost:5001
+5. To start the development server:
 
-8. npm start
+   - npm run server
+   - open a new terminal
+   - npm start, then click 'Yes'
 
 ## Login Credentials
 
-- Default admin account:
+- Default superadmin account:
   - Username: superadmin
   - Password: 12345678
 
@@ -121,13 +113,3 @@ If you encounter issues with the User Management system, follow these steps:
 Default superadmin credentials:
 - Username: superadmin
 - Password: 12345678
-
-### Development Setup
-
-To start the development environment:
-
-```
-npm run dev
-```
-
-This will start both the React frontend and Node.js backend.
